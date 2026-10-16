@@ -177,6 +177,8 @@ void UTemporalRecorderComponent::StopRewind()
 		const float Direction = bInvertMomentumOnRelease ? -1.f : 1.f;
 		PhysicsRoot->SetPhysicsLinearVelocity(LastRewoundFrame.LinearVelocity * Direction);
 		PhysicsRoot->SetPhysicsAngularVelocityInDegrees(LastRewoundFrame.AngularVelocity * Direction);
+		// Que no se quede "dormido" donde lo dejó el rebobinado (si no, puede flotar hasta que algo lo toque).
+		PhysicsRoot->WakeAllRigidBodies();
 	}
 	bWasSimulatingPhysics = false;
 

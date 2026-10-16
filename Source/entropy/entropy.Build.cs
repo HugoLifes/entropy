@@ -24,6 +24,12 @@ public class entropy : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
+		// Solo el editor: TemporalFX crea y guarda el material M_TemporalGhost la primera vez.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("AssetRegistry");
+		}
+
 		PublicIncludePaths.AddRange(new string[] {
 			"entropy",
 			"entropy/Variant_Platforming",

@@ -9,6 +9,9 @@
 #include "TemporalTestChamber.h"
 #include "CrumblePlatform.h"
 #include "TemporalFX.h"
+#include "TemporalBreakable.h"
+#include "TemporalPhysicsLab.h"
+#include "TemporalTurret.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -18,6 +21,7 @@
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -55,6 +59,10 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &ATemporalSandbox::OnRoom2);
 			InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &ATemporalSandbox::OnRoom3);
 			InputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &ATemporalSandbox::OnBackToStart);
+			InputComponent->BindKey(EKeys::Four, IE_Pressed, this, &ATemporalSandbox::OnRoom4);
+			InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &ATemporalSandbox::OnFire);
+			InputComponent->BindKey(EKeys::X, IE_Pressed, this, &ATemporalSandbox::OnFireInverted);
+			InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ATemporalSandbox::OnBreakInFront);
 		}
 	}
 
@@ -99,29 +107,84 @@ void ATemporalSandbox::Setup()
 			GoToRoom(0);
 		}
 	}
+
+	if (bSpawnPhysicsLab)
+	{
+		FActorSpawnParameters Params;
+		Params.Owner = this;
+		const FTransform LabTransform(FRotator(0.f, GetActorRotation().Yaw, 0.f), GetActorLocation() + GetActorRotation().RotateVector(PhysicsLabOffset));
+		PhysicsLab = GetWorld()->SpawnActor<ATemporalPhysicsLab>(ATemporalPhysicsLab::StaticClass(), LabTransform, Params);
+	}
 }
 
 TArray<AActor*> ATemporalSandbox::GatherRewindables() const
 {
+	// Todo lo que tenga Registro Temporal, menos el jugador (él usa F): cajas, plataformas,
+	// pedazos de objetos rotos, balas… Así cada cosa nueva con Recorder responde a R sin tocar este código.
+	const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
 	TArray<AActor*> Result;
-	for (AActor* Cube : Cubes)
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
-		if (IsValid(Cube))
+		if (*It != Player && IsValid(*It) && It->FindComponentByClass<UTemporalRecorderComponent>())
 		{
-			Result.Add(Cube);
-		}
-	}
-	if (Chamber)
-	{
-		for (ACrumblePlatform* Platform : Chamber->GetPlatforms())
-		{
-			if (IsValid(Platform))
-			{
-				Result.Add(Platform);
-			}
+			Result.Add(*It);
 		}
 	}
 	return Result;
+}
+
+void ATemporalSandbox::OnRoom4()
+{
+	if (PhysicsLab)
+	{
+		OnClearEchoes();
+		PhysicsLab->TeleportPlayerHere();
+	}
+}
+
+void ATemporalSandbox::OnFire()
+{
+	if (PhysicsLab && PhysicsLab->GetTurret())
+	{
+		PhysicsLab->GetTurret()->Fire();
+	}
+}
+
+void ATemporalSandbox::OnFireInverted()
+{
+	if (PhysicsLab && PhysicsLab->GetTurret())
+	{
+		PhysicsLab->GetTurret()->FireInverted();
+	}
+}
+
+void ATemporalSandbox::OnBreakInFront()
+{
+	const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!Pawn)
+	{
+		return;
+	}
+
+	// El rompible entero más cercano que esté enfrente (a menos de 6 m).
+	const FVector Eye = Pawn->GetActorLocation();
+	const FVector Forward = Pawn->GetActorForwardVector();
+	ATemporalBreakable* Best = nullptr;
+	float BestDist = 600.f;
+	for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
+	{
+		const FVector ToIt = It->GetActorLocation() - Eye;
+		const float Dist = ToIt.Size();
+		if (!It->IsBroken() && Dist < BestDist && FVector::DotProduct(ToIt.GetSafeNormal(), Forward) > 0.4f)
+		{
+			Best = *It;
+			BestDist = Dist;
+		}
+	}
+	if (Best)
+	{
+		Best->Break(Best->GetActorLocation() - Forward * 50.f, Forward);
+	}
 }
 
 void ATemporalSandbox::OnRoom1() { GoToRoom(0); }
@@ -209,7 +272,7 @@ void ATemporalSandbox::ShowHelp()
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
 			TEXT("ENTROPIA · F (mantener): Paso Inverso · E: eco (max 3) · G: borrar ecos · R (mantener): rebobinar objetos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
-			TEXT("CUARTO DE PRUEBAS · 1: sala Eco · 2: sala Inverso · 3: sala Brecha · 0: volver a las cajas"));
+			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
 	}
 }
 

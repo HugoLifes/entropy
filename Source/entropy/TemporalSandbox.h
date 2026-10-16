@@ -8,7 +8,10 @@
 //   T            = volver a soltar las cajas
 //   1 / 2 / 3    = ir a la sala de Eco / Inverso / Brecha del cuarto de pruebas
 //   0            = regresar a donde empezaste (las cajas)
-// También crea el cuarto de pruebas (ATemporalTestChamber) flotando sobre el Sandbox.
+//   4            = ir a la sala 4 · Física (torreta y objetos rompibles)
+//   Z / X        = la torreta de la sala 4 dispara una bala normal / una bala invertida
+//   B            = romper el objeto rompible que tengas enfrente
+// También crea el cuarto de pruebas (ATemporalTestChamber) y la sala de física (ATemporalPhysicsLab) flotando sobre el Sandbox.
 
 #pragma once
 
@@ -20,6 +23,7 @@ class UTemporalRecorderComponent;
 class UInverseStepComponent;
 class AEchoGhost;
 class ATemporalTestChamber;
+class ATemporalPhysicsLab;
 
 UCLASS(meta = (DisplayName = "Temporal Sandbox"))
 class ENTROPY_API ATemporalSandbox : public AActor
@@ -62,6 +66,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	FVector ChamberOffset = FVector(0.f, 0.f, 3000.f);
 
+	/** Crea la sala 4 · Física (torreta, caja y muro rompibles). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnPhysicsLab = true;
+
+	/** Dónde aparece la sala de física respecto al Sandbox (cm). A un lado del cuarto de pruebas. */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector PhysicsLabOffset = FVector(0.f, 3500.f, 3000.f);
+
 	/** Empezar el Play dentro de la sala 1. */
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	bool bStartInChamber = true;
@@ -95,6 +107,10 @@ private:
 	void OnRoom3();
 	void GoToRoom(int32 RoomIndex);
 	void OnBackToStart();
+	void OnRoom4();
+	void OnFire();
+	void OnFireInverted();
+	void OnBreakInFront();
 	TArray<AActor*> GatherRewindables() const;
 
 	UPROPERTY()
@@ -111,6 +127,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ATemporalTestChamber> Chamber;
+
+	UPROPERTY()
+	TObjectPtr<ATemporalPhysicsLab> PhysicsLab;
 
 	FVector PlayerStartLocation = FVector::ZeroVector;
 };

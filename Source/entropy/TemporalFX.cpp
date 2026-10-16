@@ -11,14 +11,82 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "Misc/DelayedAutoRegister.h"
+#include "Misc/PackageName.h"
+
+#if WITH_EDITOR
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
+#include "UObject/Package.h"
+#include "UObject/SavePackage.h"
+#endif
 
 namespace
 {
+	// Material propio del proyecto para fantasmas (Eco, estela, burbuja). A diferencia del de depuración
+	// del motor, este sí está marcado "Used with Skeletal Mesh": sin eso, en un juego empaquetado el Eco
+	// y la estela salían con el material gris por defecto (y en el editor llenaban el log de warnings).
+	const TCHAR* GhostPackage = TEXT("/Game/Entropia/Materiales/M_TemporalGhost");
+	const TCHAR* GhostObject = TEXT("/Game/Entropia/Materiales/M_TemporalGhost.M_TemporalGhost");
+
+#if WITH_EDITOR
+	/** Crea y guarda M_TemporalGhost si todavía no existe: unlit, translúcido, parámetro "Color" (RGB = color, A = opacidad). */
+	void CreateGhostMaterialIfMissing()
+	{
+		if (!GIsEditor || IsRunningCommandlet() || FPackageName::DoesPackageExist(GhostPackage))
+		{
+			return;
+		}
+
+		UPackage* Package = CreatePackage(GhostPackage);
+		UMaterial* Material = NewObject<UMaterial>(Package, TEXT("M_TemporalGhost"), RF_Public | RF_Standalone);
+		Material->BlendMode = BLEND_Translucent;
+		Material->SetShadingModel(MSM_Unlit);
+		Material->SetUsageByFlag(MATUSAGE_SkeletalMesh, true);
+
+		UMaterialExpressionVectorParameter* ColorParam = NewObject<UMaterialExpressionVectorParameter>(Material);
+		ColorParam->Material = Material;
+		ColorParam->ParameterName = TEXT("Color");
+		ColorParam->DefaultValue = FLinearColor(0.35f, 0.65f, 1.f, 0.45f);
+		Material->GetExpressionCollection().AddExpression(ColorParam);
+
+		// Salidas del VectorParameter: 0 = RGB, 4 = A.
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, ColorParam);
+		Material->GetEditorOnlyData()->Opacity.Connect(4, ColorParam);
+
+		Material->PreEditChange(nullptr);
+		Material->PostEditChange();
+		FAssetRegistryModule::AssetCreated(Material);
+		Package->MarkPackageDirty();
+
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		const FString Filename = FPackageName::LongPackageNameToFilename(GhostPackage, FPackageName::GetAssetPackageExtension());
+		if (UPackage::SavePackage(Package, Material, *Filename, Args))
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: creado %s"), GhostPackage);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ENTROPIA: no se pudo guardar %s (se usará el material de depuración del motor)"), GhostPackage);
+		}
+	}
+
+	// Corre una vez al terminar de arrancar el editor.
+	FDelayedAutoRegisterHelper GCreateGhostMaterial(EDelayedRegisterRunPhase::EndOfEngineInit, [] { CreateGhostMaterialIfMissing(); });
+#endif
+
 	UMaterialInterface* TranslucentBase()
 	{
 		static TWeakObjectPtr<UMaterialInterface> Cached;
 		if (!Cached.IsValid())
 		{
+			Cached = LoadObject<UMaterialInterface>(nullptr, GhostObject, nullptr, LOAD_NoWarn);
+		}
+		if (!Cached.IsValid())
+		{
+			// Respaldo: el material de depuración del motor (funciona en el editor, no en un juego empaquetado).
 			Cached = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent.M_SimpleUnlitTranslucent"));
 		}
 		return Cached.Get();

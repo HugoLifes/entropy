@@ -1,6 +1,7 @@
 // ENTROPÍA · Efectos visuales compartidos
-// Usa solo contenido que trae el motor (no hay que crear assets):
-//   - Material translúcido: /Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent (parámetro "Color", alfa = opacidad)
+// Usa contenido del motor y un único asset propio que el editor crea solo:
+//   - Material translúcido: /Game/Entropia/Materiales/M_TemporalGhost (se crea al abrir el editor si falta;
+//     parámetro "Color", alfa = opacidad). Respaldo: /Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent.
 //   - Material sólido:      /Engine/BasicShapes/BasicShapeMaterial (parámetro "Color")
 //   - Partículas:           /Niagara/DefaultAssets/Templates/Systems/RadialBurst
 // Cuando haya arte propio, cambia las rutas aquí y todo el juego se actualiza.
