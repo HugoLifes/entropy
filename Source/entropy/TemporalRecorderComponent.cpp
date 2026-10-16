@@ -39,7 +39,9 @@ void UTemporalRecorderComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		RecordFrame(DeltaTime);
 		break;
 	case ETemporalState::Rewinding:
-		RewindStep(DeltaTime);
+		// DeltaTime ya viene multiplicado por CustomTimeDilation (0 dentro de una burbuja de estasis).
+		// Usamos el mayor de los dos: las burbujas no frenan el rebobinado, pero acelerarte (Sandevistan) sí cuenta.
+		RewindStep(bRewindIgnoresTimeDilation ? FMath::Max(DeltaTime, GetWorld()->GetDeltaSeconds()) : DeltaTime);
 		break;
 	default:
 		break;
@@ -109,7 +111,9 @@ void UTemporalRecorderComponent::StartRewind()
 
 	State = ETemporalState::Rewinding;
 	RewindAccumulator = 0.f;
-	LastRewoundFrame = Frames.Last();
+	// El frame más reciente es "donde estamos ahora": de aquí parte el primer tramo hacia atrás.
+	LastRewoundFrame = Frames.Pop();
+	RecordedSeconds = FMath::Max(0.f, RecordedSeconds - LastRewoundFrame.DeltaTime);
 
 	// Mientras rebobinamos, la física no debe pelear con nosotros.
 	bWasSimulatingPhysics = PhysicsRoot && PhysicsRoot->IsSimulatingPhysics();
@@ -121,16 +125,33 @@ void UTemporalRecorderComponent::StartRewind()
 
 void UTemporalRecorderComponent::RewindStep(float DeltaTime)
 {
+	// Si alguien le regresó la física a medio rebobinado (p. ej. terminó una burbuja de estasis),
+	// la volvemos a apagar y la devolvemos al soltar, para que no pelee con nosotros.
+	if (PhysicsRoot && PhysicsRoot->IsSimulatingPhysics())
+	{
+		PhysicsRoot->SetSimulatePhysics(false);
+		bWasSimulatingPhysics = true;
+	}
+
 	RewindAccumulator += DeltaTime * RewindSpeed;
 
-	// Sacamos frames del final al mismo ritmo con que se grabaron.
-	while (NumFrames() > 0 && RewindAccumulator >= Frames.Last().DeltaTime)
+	// Ir de LastRewoundFrame al frame anterior tarda lo mismo que tardó grabarse: LastRewoundFrame.DeltaTime.
+	while (NumFrames() > 0 && RewindAccumulator >= LastRewoundFrame.DeltaTime)
 	{
-		RewindAccumulator -= Frames.Last().DeltaTime;
+		RewindAccumulator -= LastRewoundFrame.DeltaTime;
 		LastRewoundFrame = Frames.Pop();
 		RecordedSeconds = FMath::Max(0.f, RecordedSeconds - LastRewoundFrame.DeltaTime);
-		GetOwner()->SetActorTransform(LastRewoundFrame.Transform, false, nullptr, ETeleportType::TeleportPhysics);
 	}
+
+	// Mezclamos entre el frame actual y el anterior: así no se ve a saltos aunque bajen los FPS
+	// o RewindSpeed no coincida con el ritmo de grabación.
+	FTransform Target = LastRewoundFrame.Transform;
+	if (NumFrames() > 0 && LastRewoundFrame.DeltaTime > KINDA_SMALL_NUMBER)
+	{
+		const float Alpha = FMath::Clamp(RewindAccumulator / LastRewoundFrame.DeltaTime, 0.f, 1.f);
+		Target.Blend(LastRewoundFrame.Transform, Frames.Last().Transform, Alpha);
+	}
+	GetOwner()->SetActorTransform(Target, false, nullptr, ETeleportType::TeleportPhysics);
 
 	if (NumFrames() == 0)
 	{
@@ -173,8 +194,15 @@ void UTemporalRecorderComponent::SetPaused(bool bPaused)
 
 void UTemporalRecorderComponent::ClearRecording()
 {
+	// Si estábamos rebobinando, terminamos limpio (física de vuelta, aviso a quien escuche).
+	if (IsRewinding())
+	{
+		StopRewind();
+	}
 	Frames.Reset();
 	FirstFrame = 0;
 	RecordedSeconds = 0.f;
 	RewindAccumulator = 0.f;
+	// También olvidamos el último frame rebobinado (su velocidad la usa el Paso Inverso al terminar).
+	LastRewoundFrame = FTemporalFrame();
 }

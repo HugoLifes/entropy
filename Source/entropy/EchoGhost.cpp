@@ -46,6 +46,8 @@ void AEchoGhost::StartReplay(const TArray<FTemporalFrame>& InFrames, bool bLoop)
 	if (bPlaying)
 	{
 		ApplyFrame(Frames[0]);
+		// Ya estamos en el frame 0: el siguiente a alcanzar es el 1 (así se mezcla desde el inicio).
+		FrameIndex = 1;
 		TemporalFX::Burst(this, GetActorLocation(), FLinearColor(0.35f, 0.65f, 1.f), 0.8f);
 	}
 }
@@ -73,11 +75,25 @@ void AEchoGhost::Tick(float DeltaTime)
 		ApplyFrame(Frames[LastApplied]);
 	}
 
+	// Entre dos frames mezclamos la posición para que el eco se mueva suave aunque cambien los FPS.
+	if (FrameIndex > 0 && FrameIndex < Frames.Num() && Frames[FrameIndex].DeltaTime > KINDA_SMALL_NUMBER)
+	{
+		const float Alpha = FMath::Clamp(Accumulator / Frames[FrameIndex].DeltaTime, 0.f, 1.f);
+		FTransform Blended;
+		Blended.Blend(Frames[FrameIndex - 1].Transform, Frames[FrameIndex].Transform, Alpha);
+		SetActorTransform(Blended, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
 	if (FrameIndex >= Frames.Num())
 	{
-		if (bLooping)
+		// Con un solo frame no hay nada que repetir (y sin esto soltaríamos destellos cada frame).
+		if (bLooping && Frames.Num() > 1)
 		{
-			FrameIndex = 0;
+			// Al reiniciar el bucle el eco "salta" al inicio: lo disimulamos con un destello en ambos lados.
+			TemporalFX::Burst(this, GetActorLocation(), FLinearColor(0.35f, 0.65f, 1.f), 0.5f);
+			ApplyFrame(Frames[0]);
+			TemporalFX::Burst(this, GetActorLocation(), FLinearColor(0.35f, 0.65f, 1.f), 0.5f);
+			FrameIndex = 1;
 			Accumulator = 0.f;
 			return;
 		}

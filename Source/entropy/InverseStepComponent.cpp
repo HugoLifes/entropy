@@ -100,9 +100,11 @@ void UInverseStepComponent::EndInverseStep()
 	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
 	{
 		UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+		// Retomas el pasado tal como era: con la velocidad y el estado (suelo/aire) de ese instante.
+		const FTemporalFrame& Past = Recorder ? Recorder->GetLastRewoundFrame() : FTemporalFrame();
 		Movement->StopMovementImmediately();
-		// Falling resuelve solo: si estás en el piso pasa a Walking en el siguiente frame.
-		Movement->SetMovementMode(MOVE_Falling);
+		Movement->SetMovementMode(Past.bFalling ? MOVE_Falling : MOVE_Walking);
+		Movement->Velocity = Past.LinearVelocity * ExitMomentumScale;
 		if (AController* Controller = Character->GetController())
 		{
 			Controller->ResetIgnoreMoveInput();

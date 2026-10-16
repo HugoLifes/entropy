@@ -119,6 +119,10 @@ void ACrumblePlatform::HandleRewindFinished()
 
 void ACrumblePlatform::ResetPlatform()
 {
+	// Olvidamos la caída anterior: si no, al pulsar R la plataforma "recordaría" haberse hundido
+	// y se iría al vacío (o se quedaría flotando a media altura si sueltas R a medio camino).
+	// Va primero porque, si estaba rebobinando, ClearRecording le regresa la física.
+	Recorder->ClearRecording();
 	Mesh->SetSimulatePhysics(false);
 	SetActorTransform(HomeTransform, false, nullptr, ETeleportType::TeleportPhysics);
 	bCrumbled = false;

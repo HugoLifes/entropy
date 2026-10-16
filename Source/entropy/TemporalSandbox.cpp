@@ -19,6 +19,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
@@ -146,6 +147,11 @@ void ATemporalSandbox::OnBackToStart()
 		}
 		OnClearEchoes();
 		Pawn->SetActorLocation(PlayerStartLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		// El Paso Inverso deja la velocidad del pasado; al teletransportarte no queremos que te deslices.
+		if (ACharacter* Character = Cast<ACharacter>(Pawn))
+		{
+			Character->GetCharacterMovement()->StopMovementImmediately();
+		}
 		if (PlayerRecorder)
 		{
 			PlayerRecorder->ClearRecording();

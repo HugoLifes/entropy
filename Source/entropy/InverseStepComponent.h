@@ -38,6 +38,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	float MinEnergyToStart = 15.f;
 
+	/** Al soltar, sales con la velocidad que llevabas en ese instante del pasado (1 = toda, 0 = te frenas en seco). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.0", ClampMax = "1.5"))
+	float ExitMomentumScale = 1.f;
+
 	/** Grados extra de campo de visión mientras rebobinas. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	float FovKick = 12.f;

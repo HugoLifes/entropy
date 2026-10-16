@@ -70,6 +70,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	bool bInvertMomentumOnRelease = false;
 
+	/**
+	 * Regla Inverso + Brecha: el rebobinado no se frena dentro de una burbuja (usa el tiempo del mundo).
+	 * Así un objeto congelado sí regresa al pasado con R, y se queda congelado ahí hasta que la burbuja termine.
+	 * Si lo apagas, un objeto congelado no puede rebobinarse (su tiempo vale 0).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
+	bool bRewindIgnoresTimeDilation = true;
+
 	/** Graba también la pose del esqueleto (para que el Eco y el Paso Inverso se animen). Úsalo solo en personajes. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	bool bRecordPose = false;
