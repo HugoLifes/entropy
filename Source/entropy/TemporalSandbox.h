@@ -1,0 +1,116 @@
+// ENTROPÍA · Caja de arena temporal
+// Arrástralo al nivel y dale Play. Prepara al jugador y conecta las teclas:
+//   F (mantener) = Paso Inverso: Luz regresa en el tiempo (gasta energía)
+//   R (mantener) = las cajas regresan en el tiempo
+//   E            = Eco: un fantasma repite tus últimos segundos en bucle (máx. 3)
+//   G            = borrar los ecos
+//   Q            = Brecha: burbuja que congela el tiempo frente a ti
+//   T            = volver a soltar las cajas
+//   1 / 2 / 3    = ir a la sala de Eco / Inverso / Brecha del cuarto de pruebas
+//   0            = regresar a donde empezaste (las cajas)
+// También crea el cuarto de pruebas (ATemporalTestChamber) flotando sobre el Sandbox.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "TemporalSandbox.generated.h"
+
+class UTemporalRecorderComponent;
+class UInverseStepComponent;
+class AEchoGhost;
+class ATemporalTestChamber;
+
+UCLASS(meta = (DisplayName = "Temporal Sandbox"))
+class ENTROPY_API ATemporalSandbox : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	ATemporalSandbox();
+
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "0", ClampMax = "40"))
+	int32 NumCubes = 8;
+
+	/** Altura desde la que caen las cajas (cm sobre el actor). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	float SpawnHeight = 500.f;
+
+	/** Segundos que recuerda el jugador (los usa el Eco y el Paso Inverso). */
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "1"))
+	float EchoSeconds = 8.f;
+
+	/** Ecos simultáneos. Al crear uno más, desaparece el más viejo. */
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "1", ClampMax = "5"))
+	int32 MaxEchoes = 3;
+
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "50"))
+	float BubbleRadius = 400.f;
+
+	/** 0 = congela, 0.2 = cámara lenta, 3 = acelera. */
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "0"))
+	float BubbleDilation = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "1"))
+	float BubbleSeconds = 5.f;
+
+	/** Crea el cuarto de pruebas con las 3 salas (Eco, Inverso, Brecha). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnTestChamber = true;
+
+	/** Dónde aparece el cuarto respecto al Sandbox (cm). Alto para no chocar con el nivel. */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector ChamberOffset = FVector(0.f, 0.f, 3000.f);
+
+	/** Empezar el Play dentro de la sala 1. */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bStartInChamber = true;
+
+	/** Crea una placa con puerta suelta junto al Sandbox (la versión vieja del puzzle del Eco). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnPlateDemo = false;
+
+	/** Dónde aparece la placa respecto al Sandbox (cm). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector PlateOffset = FVector(0.f, -600.f, 60.f);
+
+protected:
+	virtual void BeginPlay() override;
+
+private:
+	void Setup();
+	void SpawnCubes();
+	void ShowHelp();
+
+	void OnInversePressed();
+	void OnInverseReleased();
+	void OnRewindPressed();
+	void OnRewindReleased();
+	void OnEcho();
+	void OnClearEchoes();
+	void OnBubble();
+	void OnRespawnCubes();
+	void OnRoom1();
+	void OnRoom2();
+	void OnRoom3();
+	void GoToRoom(int32 RoomIndex);
+	void OnBackToStart();
+	TArray<AActor*> GatherRewindables() const;
+
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> Cubes;
+
+	UPROPERTY()
+	TArray<TObjectPtr<AEchoGhost>> Echoes;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalRecorderComponent> PlayerRecorder;
+
+	UPROPERTY()
+	TObjectPtr<UInverseStepComponent> PlayerInverseStep;
+
+	UPROPERTY()
+	TObjectPtr<ATemporalTestChamber> Chamber;
+
+	FVector PlayerStartLocation = FVector::ZeroVector;
+};

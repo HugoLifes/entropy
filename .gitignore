@@ -1,0 +1,27 @@
+# Unreal Engine: carpetas que se regeneran solas
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Visual Studio / Rider (se regeneran con "Generate Project Files")
+.vs/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Compilados sueltos
+*.pdb
+*.obj
+*.exe
+*.dll
+
+# Grafo de graphify (se regenera con /graphify)
+graphify-out/
