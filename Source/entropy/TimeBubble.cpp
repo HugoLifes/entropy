@@ -44,7 +44,7 @@ void ATimeBubble::BeginPlay()
 
 	TemporalFX::ApplyToAllSlots(Visual, TemporalFX::MakeField(this, VisualColor));
 	Visual->SetWorldScale3D(FVector(0.01f));
-	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(VisualColor.R, VisualColor.G, VisualColor.B), 1.2f);
+	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(VisualColor.R, VisualColor.G, VisualColor.B), BurstScale);
 
 	// Lo que ya estaba dentro cuando apareció la burbuja (o su único objetivo).
 	bHasOnlyTarget = OnlyTarget.IsValid();

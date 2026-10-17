@@ -9,6 +9,7 @@
 #include "ObjectInversionComponent.h"
 #include "OverdriveComponent.h"
 #include "TemporalAimComponent.h"
+#include "TimeStopComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -82,6 +83,7 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ATemporalSandbox::OnOverdrive);
 			InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &ATemporalSandbox::OnAimPressed);
 			InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &ATemporalSandbox::OnAimReleased);
+			InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &ATemporalSandbox::OnPrimaryPressed);
 		}
 	}
 
@@ -111,6 +113,7 @@ void ATemporalSandbox::Setup()
 		// La mira va antes que los poderes que la usan (Invertir, Detener).
 		PlayerAim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("PlayerAim"));
 		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
+		PlayerTimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("PlayerTimeStop"));
 		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
 		// Barra de energía en pantalla.
@@ -317,7 +320,7 @@ void ATemporalSandbox::ShowHelp()
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
 	}
@@ -405,6 +408,14 @@ void ATemporalSandbox::OnAimReleased()
 	if (PlayerAim)
 	{
 		PlayerAim->SetAiming(false);
+	}
+}
+
+void ATemporalSandbox::OnPrimaryPressed()
+{
+	if (PlayerTimeStop)
+	{
+		PlayerTimeStop->StopAimed();
 	}
 }
 
@@ -616,6 +627,22 @@ void ATemporalSandbox::StartTour()
 		}
 	});
 	Add(TEXT("rearmado"), 1.6f, [this] { if (PlayerInversion) { PlayerInversion->EndInversion(); } });
+	// Fase 3 · Detener: la bala se queda congelada a medio vuelo (después de romper la caja, antes del muro).
+	Add(TEXT("disparo_para_detener"), 0.3f, [this] { OnFire(); });
+	Add(TEXT("detener_bala"), 2.f, [this, NewestBullet]
+	{
+		if (ATemporalProjectile* Bullet = NewestBullet(); Bullet && PlayerTimeStop)
+		{
+			PlayerTimeStop->StopActor(Bullet);
+		}
+	});
+	Add(TEXT("detener_suelta"), 1.2f, [this, NewestBullet]
+	{
+		if (ATemporalProjectile* Bullet = NewestBullet(); Bullet && PlayerTimeStop)
+		{
+			PlayerTimeStop->ReleaseActor(Bullet);
+		}
+	});
 	Add(TEXT("romper_caja"), 1.4f, [this]
 	{
 		// Una caja que no esté en la línea de tiro.
@@ -907,5 +934,37 @@ void ATemporalSandbox::BuildChaosSteps()
 		BreakAll();
 	});
 	Add(TEXT("t_cajas_x5"), 1.5f, [this] { for (int32 i = 0; i < 5; ++i) { OnRespawnCubes(); } });
+	// Fase 3 · Detener: más de 3 a la vez, cosas que desaparecen detenidas, invertir algo detenido, burbuja encima.
+	Add(TEXT("detener_x6_y_borrar"), 1.5f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		OnRoom4();
+		for (int32 i = 0; i < 3; ++i) { OnFire(); }
+		int32 Count = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It && Count < 6; ++It, ++Count)
+		{
+			if (PlayerTimeStop) { PlayerTimeStop->StopActor(*It); }
+		}
+		for (AActor* Cube : Cubes)
+		{
+			if (PlayerTimeStop && IsValid(Cube)) { PlayerTimeStop->StopActor(Cube); }
+		}
+		if (PhysicsLab && PhysicsLab->GetTurret()) { PhysicsLab->GetTurret()->ClearBullets(); }
+	});
+	Add(TEXT("detener_y_r"), 1.5f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		OnFire();
+		ATemporalProjectile* Newest = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { Newest = *It; }
+		if (Newest && PlayerTimeStop) { PlayerTimeStop->StopActor(Newest); }
+		if (Newest && PlayerInversion) { PlayerInversion->BeginInversionOn(Newest->Recorder); }
+		OnBubble();
+	});
+	Add(TEXT("detener_suelta_todo"), 1.f, [this]
+	{
+		if (PlayerInversion) { PlayerInversion->EndInversion(); }
+		if (PlayerTimeStop) { PlayerTimeStop->ReleaseAll(); }
+	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

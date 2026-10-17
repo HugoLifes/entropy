@@ -49,6 +49,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
 	bool bDrawField = true;
 
+	/** Tamaño del estallido de partículas al aparecer. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
+	float BurstScale = 1.2f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
