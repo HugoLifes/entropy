@@ -86,6 +86,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dummies") FEntropiaAnimSlot VictimDisarmed;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dummies") FEntropiaAnimSlot DummyAim;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dummies") FEntropiaAnimSlot DummyFire;
+
+	// --- Armas del jugador (Fase 4): apuntar quieto, disparar y recargar (cuerpo entero, por ahora)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RevolverAim;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RevolverFire;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RevolverReload;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RifleAim;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RifleFire;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Armas") FEntropiaAnimSlot RifleReload;
 };
 
 namespace EntropiaAnim

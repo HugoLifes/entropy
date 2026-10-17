@@ -42,6 +42,7 @@ public class entropy : ModuleRules
 			"entropy/Dev",
 			"entropy/Movimiento",
 			"entropy/Pelea",
+			"entropy/Armas",
 			"entropy/Variant_Platforming",
 			"entropy/Variant_Platforming/Animation",
 			"entropy/Variant_Combat",

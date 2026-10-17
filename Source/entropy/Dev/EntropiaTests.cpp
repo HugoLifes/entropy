@@ -26,6 +26,8 @@
 #include "EntropiaMeleeComponent.h"
 #include "EntropiaGrabComponent.h"
 #include "TemporalWorldStopComponent.h"
+#include "EntropiaGuns.h"
+#include "EntropiaWeaponSet.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -803,6 +805,103 @@ bool FEntropiaDilationWorldStopFreezes::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Pero el jugador no"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.001f, true));
 	TestFalse(TEXT("Sobremarcha (0.25) no congela"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.25f, false));
 	TestTrue(TEXT("Burbuja: congelado aunque el mundo vaya normal"), UTemporalDilationSubsystem::IsFrozenRate(0.f, 1.f, false));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 4 · Armas
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunMagazineAndReload, "Entropia.Gun.MagazineAndReload", EntropiaTestFlags::Flags)
+bool FEntropiaGunMagazineAndReload::RunTest(const FString& Parameters)
+{
+	const FEntropiaWeaponStats& Revolver = GetDefault<UEntropiaWeaponSet>()->Revolver;
+	FEntropiaWeaponState State;
+	State.Init(Revolver);
+	int32 Fired = 0;
+	for (int32 i = 0; i < 6; ++i)
+	{
+		Fired += State.TryFire(Revolver, true, true) ? 1 : 0;
+		State.Tick(Revolver, 0.45f);
+	}
+	TestEqual(TEXT("Seis tiros"), Fired, 6);
+	TestFalse(TEXT("El séptimo no sale (vacío)"), State.TryFire(Revolver, true, true));
+	TestTrue(TEXT("Empieza a recargar"), State.StartReload(Revolver));
+	TestTrue(TEXT("Recargando"), State.IsReloading());
+	State.Tick(Revolver, 1.59f);
+	TestTrue(TEXT("A 1.59 s sigue recargando"), State.IsReloading());
+	State.Tick(Revolver, 0.02f);
+	TestEqual(TEXT("Cargador lleno tras 1.6 s"), State.Ammo, 6);
+	TestFalse(TEXT("No recarga si está lleno"), State.StartReload(Revolver));
+	State.TryFire(Revolver, true, true);
+	TestEqual(TEXT("Recarga inversa: solo entra la que falta"), State.Refund(Revolver, 3), 1);
+	TestEqual(TEXT("Nunca pasa del máximo"), State.Ammo, 6);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunTriggerAndCadence, "Entropia.Gun.TriggerAndCadence", EntropiaTestFlags::Flags)
+bool FEntropiaGunTriggerAndCadence::RunTest(const FString& Parameters)
+{
+	const UEntropiaWeaponSet* Set = GetDefault<UEntropiaWeaponSet>();
+	FEntropiaWeaponState Revolver;
+	Revolver.Init(Set->Revolver);
+	TestTrue(TEXT("Primer tiro del revólver"), Revolver.TryFire(Set->Revolver, true, true));
+	Revolver.Tick(Set->Revolver, 1.f);
+	TestFalse(TEXT("Semi: mantener el gatillo no dispara otro"), Revolver.TryFire(Set->Revolver, true, false));
+
+	FEntropiaWeaponState Rifle;
+	Rifle.Init(Set->Rifle);
+	int32 Shots = 0;
+	for (int32 i = 0; i < 100; ++i)
+	{
+		Shots += Rifle.TryFire(Set->Rifle, true, i == 0) ? 1 : 0;
+		Rifle.Tick(Set->Rifle, 0.01f);
+	}
+	TestTrue(FString::Printf(TEXT("Fusil: ~10 tiros por segundo (%d)"), Shots), Shots >= 9 && Shots <= 11);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunSpreadBloom, "Entropia.Gun.SpreadBloom", EntropiaTestFlags::Flags)
+bool FEntropiaGunSpreadBloom::RunTest(const FString& Parameters)
+{
+	const FEntropiaWeaponStats& Rifle = GetDefault<UEntropiaWeaponSet>()->Rifle;
+	FEntropiaWeaponState State;
+	State.Init(Rifle);
+	TestEqual(TEXT("Quieto y sin disparar: 0.8°"), State.SpreadDegrees(Rifle, false), 0.8f, 0.001f);
+	for (int32 i = 0; i < 20; ++i)
+	{
+		State.TryFire(Rifle, true, i == 0);
+		State.Tick(Rifle, Rifle.FireInterval);
+	}
+	const float Hot = State.SpreadDegrees(Rifle, false);
+	TestTrue(FString::Printf(TEXT("Tras 20 tiros llega al tope de 3° (%.2f)"), Hot), Hot <= 3.f + 0.001f && Hot > 2.9f);
+	State.Tick(Rifle, 1.f);
+	TestEqual(TEXT("Un segundo sin disparar: vuelve a 0.8°"), State.SpreadDegrees(Rifle, false), 0.8f, 0.001f);
+	TestEqual(TEXT("Moviéndote: +1°"), State.SpreadDegrees(Rifle, true), 1.8f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunHitZoneAndDamage, "Entropia.Gun.HitZoneAndDamage", EntropiaTestFlags::Flags)
+bool FEntropiaGunHitZoneAndDamage::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Arriba de la cápsula = cabeza"), EntropiaGuns::IsHeadshot(171.f, 100.f, 90.f));
+	TestFalse(TEXT("A media cápsula = torso"), EntropiaGuns::IsHeadshot(150.f, 100.f, 90.f));
+	const UEntropiaWeaponSet* Set = GetDefault<UEntropiaWeaponSet>();
+	TestEqual(TEXT("Revólver a la cabeza: 1 tiro"), EntropiaGuns::ShotsToKnockDown(Set->Revolver.HeadDamage, 100.f), 1);
+	TestEqual(TEXT("Revólver al torso: 2 tiros"), EntropiaGuns::ShotsToKnockDown(Set->Revolver.TorsoDamage, 100.f), 2);
+	TestEqual(TEXT("Fusil al torso: 5 tiros"), EntropiaGuns::ShotsToKnockDown(Set->Rifle.TorsoDamage, 100.f), 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunFreeTravelAndCap, "Entropia.Gun.FreeTravelAndCap", EntropiaTestFlags::Flags)
+bool FEntropiaGunFreeTravelAndCap::RunTest(const FString& Parameters)
+{
+	// Mundo detenido: el tiempo de la bala vale 0.001 del real, pero los primeros 150 cm van en tiempo real.
+	TestEqual(TEXT("Recién disparada: avanza en tiempo real"), EntropiaGuns::StepDistance(8000.f, 0.000016f, 0.016f, 0.f, 150.f), 128.f, 1.f);
+	TestEqual(TEXT("Cerca del límite: lo que falta + casi nada"), EntropiaGuns::StepDistance(8000.f, 0.000016f, 0.016f, 140.f, 150.f), 10.1f, 0.05f);
+	TestEqual(TEXT("Pasado el límite: respeta el tiempo del mundo"), EntropiaGuns::StepDistance(8000.f, 0.000016f, 0.016f, 200.f, 150.f), 0.128f, 0.001f);
+	TestEqual(TEXT("Tiempo normal: igual que siempre"), EntropiaGuns::StepDistance(8000.f, 0.016f, 0.016f, 300.f, 150.f), 128.f, 0.01f);
+	TestEqual(TEXT("41 vivas: se quita 1"), EntropiaGuns::OldestToEvict(41, 40), 1);
+	TestEqual(TEXT("40 vivas: ninguna"), EntropiaGuns::OldestToEvict(40, 40), 0);
 	return true;
 }
 
