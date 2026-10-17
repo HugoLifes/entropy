@@ -1,6 +1,6 @@
 // ENTROPÍA · Paso Inverso (rama Inverso, nivel 2)
 // Mientras se mantiene la tecla, el personaje regresa en el tiempo usando su Registro Temporal.
-// Gasta energía, desactiva el movimiento, distorsiona la cámara y reproduce la animación al revés.
+// Gasta energía compartida, desactiva el movimiento, distorsiona la imagen y reproduce la animación al revés.
 
 #pragma once
 
@@ -9,7 +9,10 @@
 #include "InverseStepComponent.generated.h"
 
 class UTemporalRecorderComponent;
+class UTemporalEnergyComponent;
+class UTemporalTrailComponent;
 class UCameraComponent;
+class UPostProcessComponent;
 class UPoseableMeshComponent;
 class USkeletalMeshComponent;
 
@@ -21,22 +24,12 @@ class ENTROPY_API UInverseStepComponent : public UActorComponent
 public:
 	UInverseStepComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	float MaxEnergy = 100.f;
-
 	/** Energía por segundo mientras rebobinas (100/34 ≈ 3 s de rebobinado). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	float DrainPerSecond = 34.f;
+	float CostPerSecond = 34.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	float RegenPerSecond = 20.f;
-
-	/** Segundos sin usar el poder antes de que la energía empiece a recargarse. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	float RegenDelay = 1.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	float MinEnergyToStart = 15.f;
+	float MinToStart = 15.f;
 
 	/** Al soltar, sales con la velocidad que llevabas en ese instante del pasado (1 = toda, 0 = te frenas en seco). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.0", ClampMax = "1.5"))
@@ -46,25 +39,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	float FovKick = 12.f;
 
-	/** Mostrar la barra de energía en pantalla (prototipo, sin UMG). */
+	/** Texto de debug con la energía (ya hay barra de UMG; queda para depurar). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
-	bool bShowDebugHud = true;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Entropia")
-	float Energy = 100.f;
+	bool bShowDebugHud = false;
 
 	/** Segundos entre cada copia de la estela mientras rebobinas (0 = sin estela). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
-	float AfterimageInterval = 0.06f;
+	float AfterimageInterval = 0.09f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
-	float AfterimageLife = 0.35f;
+	FLinearColor AfterimageColor = FLinearColor(0.25f, 0.45f, 0.95f, 0.22f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
-	FLinearColor AfterimageColor = FLinearColor(0.3f, 0.6f, 1.f, 0.35f);
-
+	/** Empieza a regresar en el tiempo. Devuelve false si no pudo (sin energía o sin grabación). */
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
-	void BeginInverseStep();
+	bool BeginInverseStep();
 
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	void EndInverseStep();
@@ -81,13 +69,23 @@ private:
 	void ApplyCameraEffect(float Alpha);
 	void ApplyReversePose();
 	void SetPoseProxyVisible(bool bVisible);
-	void SpawnAfterimage();
+	void EmitAfterimage();
 
 	UPROPERTY()
 	TObjectPtr<UTemporalRecorderComponent> Recorder;
 
 	UPROPERTY()
+	TObjectPtr<UTemporalEnergyComponent> Energy;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalTrailComponent> Trail;
+
+	UPROPERTY()
 	TObjectPtr<UCameraComponent> Camera;
+
+	/** Post-process propio del poder: así no pisa el de la Sobremarcha ni el de la cámara. */
+	UPROPERTY()
+	TObjectPtr<UPostProcessComponent> PostProcess;
 
 	UPROPERTY()
 	TObjectPtr<USkeletalMeshComponent> BodyMesh;
@@ -99,6 +97,5 @@ private:
 	bool bActive = false;
 	float EffectAlpha = 0.f;
 	float BaseFov = 90.f;
-	float TimeSinceUse = 0.f;
 	float AfterimageTimer = 0.f;
 };

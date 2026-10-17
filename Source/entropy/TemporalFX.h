@@ -25,6 +25,19 @@ namespace TemporalFX
 	ENTROPY_API void ApplyToAllSlots(UMeshComponent* Mesh, UMaterialInterface* Material);
 	/** Estallido de partículas (Niagara). No hace nada si la plantilla no carga. */
 	ENTROPY_API void Burst(const UObject* WorldContext, const FVector& Location, const FLinearColor& Color, float Scale = 1.f);
+
+	/** Busca un componente en el actor y, si no existe, lo crea y lo registra (así cada poder funciona solo). */
+	template <typename T>
+	T* FindOrAddComponent(AActor* Owner, const TCHAR* Name)
+	{
+		T* Component = Owner->FindComponentByClass<T>();
+		if (!Component)
+		{
+			Component = NewObject<T>(Owner, Name);
+			Component->RegisterComponent();
+		}
+		return Component;
+	}
 }
 
 /** Copia translúcida de una pose que se desvanece (estela del Paso Inverso). */

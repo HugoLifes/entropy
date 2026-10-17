@@ -1,11 +1,14 @@
 // ENTROPÍA · Paso Inverso
 
 #include "InverseStepComponent.h"
-#include "TemporalRecorderComponent.h"
+#include "TemporalEnergyComponent.h"
 #include "TemporalFX.h"
+#include "TemporalRecorderComponent.h"
+#include "TemporalTrailComponent.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/PoseableMeshComponent.h"
+#include "Components/PostProcessComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
@@ -13,6 +16,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
+#include "Misc/App.h"
 
 UInverseStepComponent::UInverseStepComponent()
 {
@@ -33,12 +37,30 @@ void UInverseStepComponent::BeginPlay()
 		// y la pose al revés no se quede un frame atrasada.
 		AddTickPrerequisiteComponent(Recorder);
 	}
+	Energy = TemporalFX::FindOrAddComponent<UTemporalEnergyComponent>(Owner, TEXT("TemporalEnergy"));
+	Trail = TemporalFX::FindOrAddComponent<UTemporalTrailComponent>(Owner, TEXT("TemporalTrail"));
+
 	Camera = Owner->FindComponentByClass<UCameraComponent>();
 	if (Camera)
 	{
 		BaseFov = Camera->FieldOfView;
 	}
-	Energy = MaxEnergy;
+
+	// Mismo look de siempre (estilo A): mundo deslavado, tinte azul, bordes de color y viñeta.
+	PostProcess = NewObject<UPostProcessComponent>(Owner, TEXT("InversePostProcess"));
+	PostProcess->bUnbound = true;
+	PostProcess->Priority = 1.f;
+	PostProcess->BlendWeight = 0.f;
+	FPostProcessSettings& PP = PostProcess->Settings;
+	PP.bOverride_ColorSaturation = true;
+	PP.ColorSaturation = FVector4(0.25f, 0.25f, 0.25f, 1.f);
+	PP.bOverride_ColorGain = true;
+	PP.ColorGain = FVector4(0.75f, 0.9f, 1.25f, 1.f);
+	PP.bOverride_SceneFringeIntensity = true;
+	PP.SceneFringeIntensity = 4.f;
+	PP.bOverride_VignetteIntensity = true;
+	PP.VignetteIntensity = 0.9f;
+	PostProcess->RegisterComponent();
 
 	if (ACharacter* Character = Cast<ACharacter>(Owner))
 	{
@@ -58,15 +80,27 @@ void UInverseStepComponent::BeginPlay()
 	}
 }
 
-void UInverseStepComponent::BeginInverseStep()
+bool UInverseStepComponent::BeginInverseStep()
 {
-	if (bActive || !Recorder || Energy < MinEnergyToStart || Recorder->GetRecordedSeconds() < 0.1f)
+	if (bActive)
 	{
-		return;
+		return true;
+	}
+	if (!Recorder || Recorder->GetRecordedSeconds() < 0.1f)
+	{
+		return false;
+	}
+	if (!Energy || !Energy->CanAfford(MinToStart))
+	{
+		if (Energy)
+		{
+			Energy->Deny();
+		}
+		return false;
 	}
 
 	bActive = true;
-	TimeSinceUse = 0.f;
+	Energy->SetActivePower(TEXT("Inverso"));
 
 	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
 	{
@@ -81,6 +115,7 @@ void UInverseStepComponent::BeginInverseStep()
 	SetPoseProxyVisible(true);
 	AfterimageTimer = 0.f;
 	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(0.3f, 0.6f, 1.f), 0.7f);
+	return true;
 }
 
 void UInverseStepComponent::EndInverseStep()
@@ -90,7 +125,10 @@ void UInverseStepComponent::EndInverseStep()
 		return;
 	}
 	bActive = false;
-	TimeSinceUse = 0.f;
+	if (Energy)
+	{
+		Energy->SetActivePower(NAME_None);
+	}
 
 	if (Recorder && Recorder->IsRewinding())
 	{
@@ -121,9 +159,9 @@ void UInverseStepComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 
 	if (bActive)
 	{
-		Energy = FMath::Max(0.f, Energy - DrainPerSecond * DeltaTime);
 		// Se acabó la energía o la grabación: terminamos solos.
-		if (Energy <= 0.f || !Recorder || !Recorder->IsRewinding())
+		const bool bHasEnergy = Energy && Energy->Drain(CostPerSecond, FApp::GetDeltaTime());
+		if (!bHasEnergy || !Recorder || !Recorder->IsRewinding())
 		{
 			EndInverseStep();
 		}
@@ -134,16 +172,8 @@ void UInverseStepComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 			if (AfterimageInterval > 0.f && AfterimageTimer >= AfterimageInterval)
 			{
 				AfterimageTimer = 0.f;
-				SpawnAfterimage();
+				EmitAfterimage();
 			}
-		}
-	}
-	else
-	{
-		TimeSinceUse += DeltaTime;
-		if (TimeSinceUse >= RegenDelay)
-		{
-			Energy = FMath::Min(MaxEnergy, Energy + RegenPerSecond * DeltaTime);
 		}
 	}
 
@@ -152,38 +182,23 @@ void UInverseStepComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	EffectAlpha = FMath::FInterpTo(EffectAlpha, Target, DeltaTime, bActive ? 12.f : 5.f);
 	ApplyCameraEffect(EffectAlpha);
 
-	if (bShowDebugHud && GEngine)
+	if (bShowDebugHud && GEngine && Energy)
 	{
-		const int32 Filled = FMath::RoundToInt(Energy / MaxEnergy * 10.f);
-		FString Bar;
-		for (int32 i = 0; i < 10; ++i)
-		{
-			Bar += (i < Filled) ? TEXT("#") : TEXT("-");
-		}
-		const FColor Color = bActive ? FColor(120, 200, 255) : (Energy < MinEnergyToStart ? FColor::Red : FColor::White);
-		GEngine->AddOnScreenDebugMessage(2000, 0.2f, Color, FString::Printf(TEXT("PASO INVERSO (F)  [%s]  %d%%"), *Bar, FMath::RoundToInt(Energy / MaxEnergy * 100.f)));
+		GEngine->AddOnScreenDebugMessage(2000, 0.2f, FColor::White,
+			FString::Printf(TEXT("ENERGIA %d%%"), FMath::RoundToInt(Energy->GetFraction() * 100.f)));
 	}
 }
 
 void UInverseStepComponent::ApplyCameraEffect(float Alpha)
 {
-	if (!Camera)
+	if (PostProcess)
 	{
-		return;
+		PostProcess->BlendWeight = Alpha;
 	}
-
-	FPostProcessSettings& PP = Camera->PostProcessSettings;
-	PP.bOverride_ColorSaturation = true;
-	PP.ColorSaturation = FVector4(0.25f, 0.25f, 0.25f, 1.f);
-	PP.bOverride_ColorGain = true;
-	PP.ColorGain = FVector4(0.75f, 0.9f, 1.25f, 1.f);
-	PP.bOverride_SceneFringeIntensity = true;
-	PP.SceneFringeIntensity = 4.f;
-	PP.bOverride_VignetteIntensity = true;
-	PP.VignetteIntensity = 0.9f;
-
-	Camera->PostProcessBlendWeight = Alpha;
-	Camera->SetFieldOfView(BaseFov + FovKick * Alpha);
+	if (Camera)
+	{
+		Camera->SetFieldOfView(BaseFov + FovKick * Alpha);
+	}
 }
 
 void UInverseStepComponent::ApplyReversePose()
@@ -193,8 +208,26 @@ void UInverseStepComponent::ApplyReversePose()
 		return;
 	}
 
+	const int32 BoneCount = PoseProxy->BoneSpaceTransforms.Num();
+
+	// Mezclamos hueso por hueso entre el frame actual y el anterior: la animación al revés ya no salta.
+	const FTemporalFrame* From = nullptr;
+	const FTemporalFrame* To = nullptr;
+	float Alpha = 0.f;
+	if (Recorder->GetRewindSegment(From, To, Alpha) && From->Pose.Num() == BoneCount && To->Pose.Num() == BoneCount && BoneCount > 0)
+	{
+		for (int32 i = 0; i < BoneCount; ++i)
+		{
+			FTransform Bone = From->Pose[i];
+			Bone.BlendWith(To->Pose[i], Alpha);
+			PoseProxy->BoneSpaceTransforms[i] = Bone;
+		}
+		PoseProxy->MarkRefreshTransformDirty();
+		return;
+	}
+
 	const TArray<FTransform>& Pose = Recorder->GetLastRewoundFrame().Pose;
-	if (Pose.Num() > 0 && Pose.Num() == PoseProxy->BoneSpaceTransforms.Num())
+	if (Pose.Num() > 0 && Pose.Num() == BoneCount)
 	{
 		PoseProxy->BoneSpaceTransforms = Pose;
 		PoseProxy->MarkRefreshTransformDirty();
@@ -218,21 +251,16 @@ void UInverseStepComponent::SetPoseProxyVisible(bool bVisible)
 	BodyMesh->SetVisibility(!bVisible, true);
 }
 
-void UInverseStepComponent::SpawnAfterimage()
+void UInverseStepComponent::EmitAfterimage()
 {
-	if (!BodyMesh || !BodyMesh->GetSkeletalMeshAsset() || !Recorder)
+	if (!Trail || !BodyMesh || !BodyMesh->GetSkeletalMeshAsset())
 	{
 		return;
 	}
 
-	// La copia sale de donde está la marioneta (o el cuerpo, si no hay pose grabada).
-	const USceneComponent* Source = (PoseProxy && PoseProxy->IsVisible()) ? static_cast<USceneComponent*>(PoseProxy) : static_cast<USceneComponent*>(BodyMesh);
-	const FTransform MeshTransform = Source->GetComponentTransform();
-
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	if (ATemporalAfterimage* Ghost = GetWorld()->SpawnActor<ATemporalAfterimage>(ATemporalAfterimage::StaticClass(), MeshTransform, Params))
-	{
-		Ghost->Init(BodyMesh->GetSkeletalMeshAsset(), MeshTransform, Recorder->GetLastRewoundFrame().Pose, AfterimageColor, AfterimageLife);
-	}
+	// La copia sale de la marioneta (con la pose ya mezclada) o, si no hay pose grabada, del cuerpo.
+	const bool bFromProxy = PoseProxy && PoseProxy->IsVisible();
+	const FTransform MeshTransform = bFromProxy ? PoseProxy->GetComponentTransform() : BodyMesh->GetComponentTransform();
+	const TArray<FTransform>& Pose = bFromProxy ? PoseProxy->BoneSpaceTransforms : Recorder->GetLastRewoundFrame().Pose;
+	Trail->Emit(BodyMesh->GetSkeletalMeshAsset(), Pose, MeshTransform, AfterimageColor);
 }
