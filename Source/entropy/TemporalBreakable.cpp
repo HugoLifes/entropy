@@ -142,7 +142,27 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 		}
 	}
 
+	// Todos los pedazos forman un grupo: al apuntar a uno con R, se rebobinan juntos y el bloque se rearma.
+	const TArray<UTemporalRecorderComponent*> ShardRecorders = GetShardRecorders();
+	for (int32 i = 1; i < ShardRecorders.Num(); ++i)
+	{
+		ShardRecorders[0]->LinkWith(ShardRecorders[i]);
+	}
+
 	TemporalFX::Burst(this, ImpactPoint, FLinearColor(1.f, 0.6f, 0.2f), 0.8f);
+}
+
+TArray<UTemporalRecorderComponent*> ATemporalBreakable::GetShardRecorders() const
+{
+	TArray<UTemporalRecorderComponent*> Result;
+	for (const AStaticMeshActor* Shard : Shards)
+	{
+		if (UTemporalRecorderComponent* Recorder = IsValid(Shard) ? Shard->FindComponentByClass<UTemporalRecorderComponent>() : nullptr)
+		{
+			Result.Add(Recorder);
+		}
+	}
+	return Result;
 }
 
 void ATemporalBreakable::RewindShards(float Speed)

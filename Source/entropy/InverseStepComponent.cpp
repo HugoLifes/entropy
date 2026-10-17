@@ -1,6 +1,7 @@
 // ENTROPÍA · Paso Inverso
 
 #include "InverseStepComponent.h"
+#include "ObjectInversionComponent.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
@@ -97,6 +98,12 @@ bool UInverseStepComponent::BeginInverseStep()
 			Energy->Deny();
 		}
 		return false;
+	}
+
+	// F y R no van juntos: regresar tú en el tiempo suelta el objeto que estabas invirtiendo.
+	if (UObjectInversionComponent* Inversion = GetOwner()->FindComponentByClass<UObjectInversionComponent>())
+	{
+		Inversion->EndInversion();
 	}
 
 	bActive = true;

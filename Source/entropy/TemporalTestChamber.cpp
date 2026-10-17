@@ -245,7 +245,7 @@ void ATemporalTestChamber::ShowRoomHint(int32 RoomIndex)
 
 	static const TCHAR* Hints[] = {
 		TEXT("SALA 1 · ECO: parate ~3 s en la placa roja, camina hasta la puerta azul y pulsa E. Tu eco pisa la placa y te abre."),
-		TEXT("SALA 2 · INVERSO: las plataformas caen al pisarlas. Dejalas caer y MANTEN R: las que regresan quedan ANCLADAS (azules). Si caes, MANTEN F."),
+		TEXT("SALA 2 · INVERSO: las plataformas caen al pisarlas. APUNTA a una caida y MANTEN R: si vuelve a su lugar queda ANCLADA (azul). Una por una. Si caes, MANTEN F."),
 		TEXT("SALA 3 · BRECHA: la prensa roja aplasta. Cuando este ARRIBA pulsa Q frente a ella para congelarla y pasa por debajo."),
 	};
 	const FColor Colors[] = { FColor(90, 140, 255), FColor(255, 160, 60), FColor(60, 230, 200) };

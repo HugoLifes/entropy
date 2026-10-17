@@ -148,6 +148,11 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 		if (ATemporalBreakable* Breakable = Cast<ATemporalBreakable>(HitActor))
 		{
 			Breakable->Break(Hit.ImpactPoint, Dir);
+			// La bala y lo que rompió quedan en el mismo grupo: al invertir la bala, el muro se rearma con ella.
+			for (UTemporalRecorderComponent* Shard : Breakable->GetShardRecorders())
+			{
+				Recorder->LinkWith(Shard);
+			}
 		}
 		else if (HitComp && HitComp->IsSimulatingPhysics())
 		{

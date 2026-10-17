@@ -5,6 +5,7 @@
 #include "TemporalSubsystem.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalHUDWidget.h"
+#include "ObjectInversionComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -92,6 +93,8 @@ void ATemporalSandbox::Setup()
 			PlayerInverseStep->RegisterComponent();
 		}
 
+		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
+
 		// Barra de energía en pantalla.
 		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 		{
@@ -158,6 +161,7 @@ void ATemporalSandbox::OnRoom4()
 {
 	if (PhysicsLab)
 	{
+		EndPlayerPowersForTeleport();
 		OnClearEchoes();
 		PhysicsLab->TeleportPlayerHere();
 	}
@@ -216,6 +220,7 @@ void ATemporalSandbox::GoToRoom(int32 RoomIndex)
 {
 	if (Chamber)
 	{
+		EndPlayerPowersForTeleport();
 		OnClearEchoes();
 		Chamber->TeleportToRoom(RoomIndex);
 	}
@@ -225,10 +230,7 @@ void ATemporalSandbox::OnBackToStart()
 {
 	if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
 	{
-		if (PlayerInverseStep)
-		{
-			PlayerInverseStep->EndInverseStep();
-		}
+		EndPlayerPowersForTeleport();
 		OnClearEchoes();
 		Pawn->SetActorLocation(PlayerStartLocation, false, nullptr, ETeleportType::TeleportPhysics);
 		// El Paso Inverso deja la velocidad del pasado; al teletransportarte no queremos que te deslices.
@@ -291,7 +293,7 @@ void ATemporalSandbox::ShowHelp()
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · F (mantener): Paso Inverso · E: eco (max 3) · G: borrar ecos · R (mantener): rebobinar objetos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Shift+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
 	}
@@ -315,6 +317,18 @@ void ATemporalSandbox::OnInverseReleased()
 
 void ATemporalSandbox::OnRewindPressed()
 {
+	// Shift+R = rebobinar TODO (para pruebas, sin costo). R sola = Invertir objeto: solo lo que apuntas.
+	const APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	bRewindingAll = PC && (PC->IsInputKeyDown(EKeys::LeftShift) || PC->IsInputKeyDown(EKeys::RightShift));
+	if (!bRewindingAll)
+	{
+		if (PlayerInversion)
+		{
+			PlayerInversion->BeginInversion();
+		}
+		return;
+	}
+
 	for (AActor* Actor : GatherRewindables())
 	{
 		if (UTemporalRecorderComponent* Recorder = Actor->FindComponentByClass<UTemporalRecorderComponent>())
@@ -326,12 +340,34 @@ void ATemporalSandbox::OnRewindPressed()
 
 void ATemporalSandbox::OnRewindReleased()
 {
+	if (!bRewindingAll)
+	{
+		if (PlayerInversion)
+		{
+			PlayerInversion->EndInversion();
+		}
+		return;
+	}
+
+	bRewindingAll = false;
 	for (AActor* Actor : GatherRewindables())
 	{
 		if (UTemporalRecorderComponent* Recorder = Actor->FindComponentByClass<UTemporalRecorderComponent>())
 		{
 			Recorder->StopRewind();
 		}
+	}
+}
+
+void ATemporalSandbox::EndPlayerPowersForTeleport()
+{
+	if (PlayerInverseStep)
+	{
+		PlayerInverseStep->EndInverseStep();
+	}
+	if (PlayerInversion)
+	{
+		PlayerInversion->EndInversion();
 	}
 }
 

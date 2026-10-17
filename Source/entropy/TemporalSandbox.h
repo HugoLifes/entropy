@@ -23,6 +23,7 @@ class UTemporalRecorderComponent;
 class UInverseStepComponent;
 class UTemporalEnergyComponent;
 class UTemporalHUDWidget;
+class UObjectInversionComponent;
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
@@ -120,6 +121,8 @@ private:
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();
+	/** Antes de teletransportar al jugador: soltar F y R. */
+	void EndPlayerPowersForTeleport();
 	TArray<AActor*> GatherRewindables() const;
 
 	UPROPERTY()
@@ -139,6 +142,12 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UTemporalHUDWidget> EnergyHUD;
+
+	UPROPERTY()
+	TObjectPtr<UObjectInversionComponent> PlayerInversion;
+
+	/** La R actual se pulsó con Shift (rebobinar todo) y no como Invertir objeto. */
+	bool bRewindingAll = false;
 
 	UPROPERTY()
 	TObjectPtr<ATemporalTestChamber> Chamber;

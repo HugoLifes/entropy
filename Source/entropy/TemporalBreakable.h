@@ -12,6 +12,7 @@
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class AStaticMeshActor;
+class UTemporalRecorderComponent;
 
 UCLASS()
 class ENTROPY_API ATemporalBreakable : public AActor
@@ -61,6 +62,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Entropia")
 	bool IsBroken() const { return bBroken; }
+
+	/** Registros de los pedazos vivos (vacío si está entero). */
+	TArray<UTemporalRecorderComponent*> GetShardRecorders() const;
 
 	/** ¿El segmento A→B pasa por donde está (o estaba) el bloque? */
 	bool SegmentCrosses(const FVector& A, const FVector& B) const;
