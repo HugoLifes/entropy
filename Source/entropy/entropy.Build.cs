@@ -34,6 +34,12 @@ public class entropy : ModuleRules
 
 		PublicIncludePaths.AddRange(new string[] {
 			"entropy",
+			// ENTROPÍA: código propio ordenado por carpetas (los #include siguen siendo solo el nombre del archivo).
+			"entropy/Core",
+			"entropy/Poderes",
+			"entropy/Mundo",
+			"entropy/FX",
+			"entropy/Dev",
 			"entropy/Variant_Platforming",
 			"entropy/Variant_Platforming/Animation",
 			"entropy/Variant_Combat",
