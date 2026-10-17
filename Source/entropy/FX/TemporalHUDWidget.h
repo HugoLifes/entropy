@@ -15,6 +15,7 @@ class UTemporalHealthComponent;
 class UTemporalDashComponent;
 class UTakedownComponent;
 class UEntropiaGrabComponent;
+class UEntropiaWeaponComponent;
 
 UCLASS()
 class ENTROPY_API UTemporalHUDWidget : public UUserWidget
@@ -28,6 +29,7 @@ public:
 	void SetDash(UTemporalDashComponent* InDash) { Dash = InDash; }
 	void SetTakedown(UTakedownComponent* InTakedown) { Takedown = InTakedown; }
 	void SetGrab(UEntropiaGrabComponent* InGrab);
+	void SetWeapons(UEntropiaWeaponComponent* InWeapons);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -36,6 +38,8 @@ protected:
 
 private:
 	void PaintCrosshair(const FGeometry& Geometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+	/** Fase 4: arma, balas, recarga y "+1" (abajo a la derecha); marca de impacto en la mira. */
+	void PaintWeapon(const FGeometry& Geometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
 
 	TWeakObjectPtr<UTemporalEnergyComponent> Energy;
 	TWeakObjectPtr<UTemporalAimComponent> Aim;
@@ -43,4 +47,5 @@ private:
 	TWeakObjectPtr<UTemporalDashComponent> Dash;
 	TWeakObjectPtr<UTakedownComponent> Takedown;
 	TWeakObjectPtr<UEntropiaGrabComponent> Grab;
+	TWeakObjectPtr<UEntropiaWeaponComponent> Weapons;
 };

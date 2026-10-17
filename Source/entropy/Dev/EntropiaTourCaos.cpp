@@ -42,6 +42,8 @@
 #include "TemporalPhysicsLab.h"
 #include "TemporalTurret.h"
 #include "TemporalProjectile.h"
+#include "EntropiaWeaponComponent.h"
+#include "EntropiaWeaponSet.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -823,6 +825,80 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		}
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiros_guardados_reinicio guardados=%d balas_pegadas=%d aguante=%.0f tumbado=%d"), Target ? Target->NumStoredShots() : -1,
 			Stuck, Target ? Target->GetToughness() : -1.f, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 4 · Recarga interrumpida (cambiar de arma, morir) y Recarga inversa con Ctrl+R sobre muchas balas.
+	auto ChaosWeapon = [this](const TCHAR* Tag)
+	{
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s arma=%s balas=%d recargando=%d"), Tag, W ? *W->CurrentStats().Name.ToString() : TEXT("nada"),
+			W ? W->CurrentState().Ammo : -1, W && W->CurrentState().IsReloading() ? 1 : 0);
+	};
+	auto AimAtWall = [this]()
+	{
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+		if (Rooms->CombatRoom) { LookAtPoint(Rooms->CombatRoom->RoomToWorld(FVector(2600.f, 0.f, 150.f))); }
+	};
+	Add(TEXT("recarga_prepara"), 0.8f, [this, AimAtWall]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		AimAtWall();
+	});
+	Add(TEXT("recarga_dispara"), 0.5f, [this, AimAtWall]
+	{
+		AimAtWall();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("recarga_y_cambio"), 0.5f, [this, ChaosWeapon]
+	{
+		ChaosWeapon(TEXT("recarga_antes"));
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+	});
+	Add(TEXT("recarga_cambio"), 2.2f, [this, ChaosWeapon]
+	{
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(1); Powers->Weapons->CycleWeapon(-1); }
+		ChaosWeapon(TEXT("recarga_interrumpida"));
+	});
+	Add(TEXT("recarga_muere"), 0.5f, [this, ChaosWeapon]
+	{
+		ChaosWeapon(TEXT("recarga_interrumpida_fin"));
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("recarga_muerte_revisa"), 0.6f, [this, ChaosWeapon, AimAtWall]
+	{
+		ChaosWeapon(TEXT("recarga_tras_morir"));
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		AimAtWall();
+	});
+	Add(TEXT("recarga_muerte_dispara"), 0.5f, [this, AimAtWall]
+	{
+		AimAtWall();
+		const int32 Before = Powers->Weapons ? Powers->Weapons->GetTotalShots() : -1;
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR recarga_tras_morir_dispara dispara=%d"), Powers->Weapons && Powers->Weapons->GetTotalShots() > Before ? 1 : 0);
+	});
+	Add(TEXT("recarga_inversa_rafaga"), 3.3f, [this, AimAtWall]
+	{
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 1) { Powers->Weapons->CycleWeapon(1); }
+		AimAtWall();
+		Powers->PrimaryAction();
+	});
+	Add(TEXT("recarga_inversa_todo"), 3.f, [this, ChaosWeapon]
+	{
+		Powers->PrimaryReleased();
+		ChaosWeapon(TEXT("recarga_inversa_vacio"));
+		Rooms->RewindAll(true);
+	});
+	Add(TEXT("recarga_inversa_todo_revisa"), 0.4f, [this, ChaosWeapon]
+	{
+		Rooms->RewindAll(false);
+		ChaosWeapon(TEXT("recarga_inversa_todo"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(-1); }
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("calma"), 2.5f, [] {});

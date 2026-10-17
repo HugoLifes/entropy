@@ -8,6 +8,7 @@
 #if WITH_EDITOR
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Texture.h"
+#include "Engine/StaticMesh.h"
 #include "Misc/DelayedAutoRegister.h"
 #include "Misc/PackageName.h"
 #include "UObject/SavePackage.h"
@@ -31,13 +32,23 @@ namespace EntropiaWeaponDefaults
 	/** Metal oscuro para quitarle el verde de juguete al pack low poly. */
 	const FLinearColor DarkMetal(0.07f, 0.07f, 0.08f, 1.f);
 
-	FEntropiaWeaponPart Part(const TCHAR* Path, bool bMagazine = false)
+	FEntropiaWeaponPart Part(const TCHAR* Path, const FTransform& Offset, bool bMagazine = false)
 	{
 		FEntropiaWeaponPart Result;
 		Result.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Path));
+		Result.Offset = Offset;
 		Result.bMagazine = bMagazine;
 		return Result;
 	}
+
+	// El hueso hand_r del maniquí, en la pose de apuntar: -X = hacia donde apunta el cañón (los dedos), +Z = arriba.
+	// La empuñadura va en la palma, unos 8 cm delante de la muñeca.
+	// Revólver (glb): cañón hacia -X, empuñadura en el origen, 49 cm de largo → al 80 %.
+	const FTransform RevolverInHand(FRotator(0.f, 0.f, 0.f), FVector(-2.f, 0.f, 1.f), FVector(0.8f));
+	// Pack low poly: cañón hacia -Y, unas 4 veces más grande que de verdad → girado -90°.
+	// Fusil al 28 % (≈ 90 cm), empuñadura en Y≈25, Z≈-40 del modelo.
+	const FTransform RifleInHand(FRotator(0.f, -90.f, 0.f), FVector(-15.f, 0.f, 8.f), FVector(0.28f));
+	const FTransform PistolInHand(FRotator(0.f, 180.f, 0.f), FVector(0.f, 4.6f, 4.f), FVector(0.16f));
 }
 
 UEntropiaWeaponSet::UEntropiaWeaponSet()
@@ -47,7 +58,8 @@ UEntropiaWeaponSet::UEntropiaWeaponSet()
 	// Revólver "Aurora": 6 tiros, lento, pega muy fuerte y patea mucho.
 	Revolver.Name = TEXT("Revolver");
 	Revolver.DisplayName = NSLOCTEXT("Entropia", "Revolver", "REVÓLVER");
-	Revolver.Parts.Add(Part(EntropiaWeaponDefaults::Revolver));
+	Revolver.Parts.Add(Part(EntropiaWeaponDefaults::Revolver, EntropiaWeaponDefaults::RevolverInHand));
+	Revolver.MuzzleOffset = FVector(-37.f, 0.f, 5.f);
 	Revolver.FireInterval = 0.45f;
 	Revolver.bAutomatic = false;
 	Revolver.MagazineSize = 6;
@@ -66,9 +78,10 @@ UEntropiaWeaponSet::UEntropiaWeaponSet()
 	// Fusil: automático, 30 tiros, rápido, pega menos.
 	Rifle.Name = TEXT("Rifle");
 	Rifle.DisplayName = NSLOCTEXT("Entropia", "Rifle", "FUSIL");
-	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleBody));
-	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleScope));
-	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleMagazine, true));
+	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleBody, EntropiaWeaponDefaults::RifleInHand));
+	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleScope, EntropiaWeaponDefaults::RifleInHand));
+	Rifle.Parts.Add(Part(EntropiaWeaponDefaults::RifleMagazine, EntropiaWeaponDefaults::RifleInHand, true));
+	Rifle.MuzzleOffset = FVector(-66.f, 0.f, 8.f);
 	Rifle.Tint = EntropiaWeaponDefaults::DarkMetal;
 	Rifle.FireInterval = 0.1f;
 	Rifle.bAutomatic = true;
@@ -88,8 +101,9 @@ UEntropiaWeaponSet::UEntropiaWeaponSet()
 	// La pistola de los dummies (solo el modelo cuenta).
 	DummyPistol.Name = TEXT("DummyPistol");
 	DummyPistol.DisplayName = NSLOCTEXT("Entropia", "DummyPistol", "PISTOLA");
-	DummyPistol.Parts.Add(Part(EntropiaWeaponDefaults::PistolBody));
-	DummyPistol.Parts.Add(Part(EntropiaWeaponDefaults::PistolMagazine, true));
+	DummyPistol.Parts.Add(Part(EntropiaWeaponDefaults::PistolBody, EntropiaWeaponDefaults::PistolInHand));
+	DummyPistol.Parts.Add(Part(EntropiaWeaponDefaults::PistolMagazine, EntropiaWeaponDefaults::PistolInHand, true));
+	DummyPistol.MuzzleOffset = FVector(0.f, 17.f, 7.f);
 	DummyPistol.Tint = EntropiaWeaponDefaults::DarkMetal;
 }
 
@@ -150,6 +164,20 @@ namespace EntropiaWeaponSetEditor
 		const int32 Limit = UEntropiaWeaponSet::Get()->MaxTextureSize;
 		for (const FAssetData& Data : Assets)
 		{
+			if (Data.IsInstanceOf(UStaticMesh::StaticClass()))
+			{
+				UStaticMesh* Mesh = Cast<UStaticMesh>(Data.GetAsset());
+				if (Mesh && Mesh->IsNaniteEnabled())
+				{
+					// Armas chicas: sin Nanite (su material importado no lo soporta y saldría gris por defecto).
+					FMeshNaniteSettings Settings = Mesh->GetNaniteSettings();
+					Settings.bEnabled = false;
+					Mesh->SetNaniteSettings(Settings);
+					Mesh->PostEditChange();
+					UE_LOG(LogTemp, Display, TEXT("ENTROPIA: sin Nanite: %s (%s)"), *Mesh->GetPathName(), SaveAsset(Mesh) ? TEXT("guardado") : TEXT("sin guardar"));
+				}
+				continue;
+			}
 			if (!Data.IsInstanceOf(UTexture::StaticClass()))
 			{
 				continue;

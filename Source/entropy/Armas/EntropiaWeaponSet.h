@@ -22,7 +22,7 @@ struct ENTROPY_API FEntropiaWeaponPart
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	TSoftObjectPtr<UStaticMesh> Mesh;
 
-	/** Posición, giro y escala respecto al socket weapon_r de la mano derecha. */
+	/** Posición, giro y escala respecto al hueso hand_r (la mano derecha). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	FTransform Offset = FTransform::Identity;
 
@@ -47,9 +47,9 @@ struct ENTROPY_API FEntropiaWeaponStats
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modelo")
 	TArray<FEntropiaWeaponPart> Parts;
 
-	/** Punta del cañón respecto al socket weapon_r. */
+	/** Punta del cañón respecto al hueso hand_r (-X = hacia donde apunta). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modelo")
-	FVector MuzzleOffset = FVector(0.f, 30.f, 6.f);
+	FVector MuzzleOffset = FVector(-30.f, 0.f, 5.f);
 
 	/** Color propio (oscuro) para todo el modelo. Alfa 0 = conservar los materiales del modelo. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modelo")

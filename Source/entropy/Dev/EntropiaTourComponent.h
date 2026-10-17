@@ -48,6 +48,8 @@ private:
 	/** Una bala del jugador (daña maniquíes), como las del revólver o el fusil. */
 	ATemporalProjectile* SpawnPlayerTourBullet(const FVector& From, const FVector& Direction, float TorsoDamage, float HeadDamage, float Impulse);
 	void ClearTourTemps();
+	/** Gira la cámara para que el centro de la mira quede sobre Target. */
+	void LookAtPoint(const FVector& Target);
 
 	UPROPERTY()
 	TObjectPtr<UEntropiaPlayerPowers> Powers;

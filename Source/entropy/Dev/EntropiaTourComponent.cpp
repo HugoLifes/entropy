@@ -115,6 +115,16 @@ ATemporalProjectile* UEntropiaTourComponent::SpawnPlayerTourBullet(const FVector
 	return Bullet;
 }
 
+void UEntropiaTourComponent::LookAtPoint(const FVector& Target)
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	if (!PC || !PC->PlayerCameraManager)
+	{
+		return;
+	}
+	PC->SetControlRotation((Target - PC->PlayerCameraManager->GetCameraLocation()).Rotation());
+}
+
 void UEntropiaTourComponent::ClearTourTemps()
 {
 	for (const TWeakObjectPtr<AActor>& Temp : TourTemps)

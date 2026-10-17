@@ -50,6 +50,9 @@ private:
 	void OnAimPressed();
 	void OnAimReleased();
 	void OnPrimaryPressed();
+	void OnPrimaryReleased();
+	void OnNextWeapon();
+	void OnPreviousWeapon();
 	void OnDash();
 	void OnSprintReleased();
 	void OnCrouch();

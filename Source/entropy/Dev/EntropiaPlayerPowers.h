@@ -23,6 +23,7 @@ class UEntropiaCoverComponent;
 class UEntropiaMeleeComponent;
 class UEntropiaGrabComponent;
 class UTemporalWorldStopComponent;
+class UEntropiaWeaponComponent;
 class UTemporalEnergyComponent;
 class UTemporalHealthComponent;
 class UTemporalHUDWidget;
@@ -69,14 +70,18 @@ public:
 	void CreateEcho();
 	/** G: borra los ecos. */
 	void ClearEchoes();
-	/** Q: nivel 1 = burbuja frente a ti; nivel 2 = detener el tiempo de todo el mundo (The World). */
+	/** Q: apuntando a algo = Detenerlo (Fase 4); si no: nivel 1 = burbuja frente a ti, nivel 2 = detener todo el mundo (The World). */
 	void SpawnBubble();
 
 	/** N (prueba): cambia el nivel de Detener el tiempo entre 1 y 2. Hasta que haya progresión (remaches). */
 	void CycleTimeStopLevel();
 	int32 GetTimeStopLevel() const { return TimeStopLevel; }
-	/** Clic izquierdo: remata si el HUD lo muestra; si no, apuntando detiene lo que está en la mira y sin apuntar golpea. */
+	/** Clic izquierdo: remata si el HUD lo muestra; si no, apuntando dispara (Fase 4) y sin apuntar golpea. */
 	void PrimaryAction();
+	/** Soltar el clic izquierdo (el fusil deja de disparar). */
+	void PrimaryReleased();
+	/** R sin nada en la mira = recargar. True si no había nada en la mira (la R ya se usó). */
+	bool ReloadIfNothingAimed();
 	void TryDash();
 	void ToggleOverdrive();
 
@@ -101,6 +106,7 @@ public:
 	UPROPERTY() TObjectPtr<UEntropiaMeleeComponent> Melee;
 	UPROPERTY() TObjectPtr<UEntropiaGrabComponent> Grab;
 	UPROPERTY() TObjectPtr<UTemporalWorldStopComponent> WorldStop;
+	UPROPERTY() TObjectPtr<UEntropiaWeaponComponent> Weapons;
 	UPROPERTY() TObjectPtr<USlowEyeComponent> SlowEye;
 	UPROPERTY() TObjectPtr<UTakedownComponent> Takedown;
 	UPROPERTY() TObjectPtr<UOverdriveComponent> Overdrive;

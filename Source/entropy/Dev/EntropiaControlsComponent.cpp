@@ -6,6 +6,7 @@
 #include "EntropiaCoverComponent.h"
 #include "EntropiaGrabComponent.h"
 #include "EntropiaPlayerPowers.h"
+#include "EntropiaWeaponComponent.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
@@ -93,6 +94,9 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &UEntropiaControlsComponent::OnAimPressed);
 	Input->BindKey(EKeys::RightMouseButton, IE_Released, this, &UEntropiaControlsComponent::OnAimReleased);
 	Input->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &UEntropiaControlsComponent::OnPrimaryPressed);
+	Input->BindKey(EKeys::LeftMouseButton, IE_Released, this, &UEntropiaControlsComponent::OnPrimaryReleased);
+	Input->BindKey(EKeys::MouseScrollUp, IE_Pressed, this, &UEntropiaControlsComponent::OnNextWeapon);
+	Input->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &UEntropiaControlsComponent::OnPreviousWeapon);
 	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &UEntropiaControlsComponent::OnDash);
 	Input->BindKey(EKeys::LeftShift, IE_Released, this, &UEntropiaControlsComponent::OnSprintReleased);
 	Input->BindKey(EKeys::C, IE_Pressed, this, &UEntropiaControlsComponent::OnCrouch);
@@ -105,7 +109,7 @@ void UEntropiaControlsComponent::ShowHelp() const
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
 			TEXT("MOVERSE · Shift: dash (mantener: correr) · Espacio: saltar o parkour (vallas, subir, trepar, orillas) · C: agacharse o cubrirse (colgado: soltarse) · Clic der.: apuntar"));
 		GEngine->AddOnScreenDebugMessage(1001, 40.f, FColor(120, 220, 255),
-			TEXT("PELEA Y PODERES · Clic izq.: golpes (apuntando: detener) · E: agarrar · F: Paso Inverso · R: invertir · Ctrl+R: todo · V: Sobremarcha · Q: burbuja (N: nivel 2 = detener todo) · H: eco · G: borrar ecos · T: cajas"));
+			TEXT("PELEA Y PODERES · Clic izq.: golpes (apuntando: disparar) · Rueda: cambiar arma · R: invertir (sin nada en la mira: recargar) · Q: burbuja (apuntando a algo: detener) · E: agarrar · F: Paso Inverso · Ctrl+R: todo · V: Sobremarcha · N: nivel 2 = detener todo · H: eco · G: borrar ecos · T: cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 0: volver a las cajas"));
 	}
@@ -135,6 +139,11 @@ void UEntropiaControlsComponent::OnRewindPressed()
 	bRewindingAll = PC && (PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::RightControl));
 	if (!bRewindingAll)
 	{
+		// Fase 4: R sin nada en la mira = recargar.
+		if (Powers->ReloadIfNothingAimed())
+		{
+			return;
+		}
 		if (Powers->Inversion)
 		{
 			Powers->Inversion->BeginInversion();
@@ -259,6 +268,27 @@ void UEntropiaControlsComponent::OnAimReleased()
 void UEntropiaControlsComponent::OnPrimaryPressed()
 {
 	Powers->PrimaryAction();
+}
+
+void UEntropiaControlsComponent::OnPrimaryReleased()
+{
+	Powers->PrimaryReleased();
+}
+
+void UEntropiaControlsComponent::OnNextWeapon()
+{
+	if (Powers->Weapons)
+	{
+		Powers->Weapons->CycleWeapon(1);
+	}
+}
+
+void UEntropiaControlsComponent::OnPreviousWeapon()
+{
+	if (Powers->Weapons)
+	{
+		Powers->Weapons->CycleWeapon(-1);
+	}
 }
 
 void UEntropiaControlsComponent::OnDash()

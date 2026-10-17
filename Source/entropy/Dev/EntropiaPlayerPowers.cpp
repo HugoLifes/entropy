@@ -7,6 +7,7 @@
 #include "EntropiaMeleeComponent.h"
 #include "EntropiaGrabComponent.h"
 #include "TemporalWorldStopComponent.h"
+#include "EntropiaWeaponComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -94,6 +95,8 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		Grab = TemporalFX::FindOrAddComponent<UEntropiaGrabComponent>(Pawn, TEXT("Grab"));
 		WorldStop = TemporalFX::FindOrAddComponent<UTemporalWorldStopComponent>(Pawn, TEXT("WorldStop"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
+		// El arma va después de la mira (dispara hacia ella).
+		Weapons = TemporalFX::FindOrAddComponent<UEntropiaWeaponComponent>(Pawn, TEXT("Weapons"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
 		Dash = TemporalFX::FindOrAddComponent<UTemporalDashComponent>(Pawn, TEXT("Dash"));
@@ -113,6 +116,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 				HUD->SetDash(Dash);
 				HUD->SetTakedown(Takedown);
 				HUD->SetGrab(Grab);
+				HUD->SetWeapons(Weapons);
 				HUD->AddToViewport();
 			}
 		}
@@ -188,6 +192,12 @@ void UEntropiaPlayerPowers::ClearEchoes()
 
 void UEntropiaPlayerPowers::SpawnBubble()
 {
+	// Fase 4: el clic apuntando ahora dispara, así que Detener vive en Q apuntando a algo.
+	if (Aim && Aim->IsAiming() && TimeStop && Aim->FindTarget())
+	{
+		TimeStop->StopAimed();
+		return;
+	}
 	// Nivel 2: el mundo entero se detiene (Star Platinum: The World).
 	if (TimeStopLevel >= 2 && WorldStop)
 	{
@@ -230,12 +240,12 @@ void UEntropiaPlayerPowers::PrimaryAction()
 	{
 		return;
 	}
-	// Apuntando: Detener lo que está en la mira. Sin apuntar: golpes (combo de 3).
+	// Apuntando: dispara (Fase 4; Detener se mudó a Q apuntando). Sin apuntar: golpes (combo de 3).
 	if (Aim && Aim->IsAiming())
 	{
-		if (TimeStop)
+		if (Weapons)
 		{
-			TimeStop->StopAimed();
+			Weapons->TriggerPressed();
 		}
 		return;
 	}
@@ -243,6 +253,24 @@ void UEntropiaPlayerPowers::PrimaryAction()
 	{
 		Melee->TryAttack();
 	}
+}
+
+void UEntropiaPlayerPowers::PrimaryReleased()
+{
+	if (Weapons)
+	{
+		Weapons->TriggerReleased();
+	}
+}
+
+bool UEntropiaPlayerPowers::ReloadIfNothingAimed()
+{
+	if (!Weapons || (Aim && Aim->FindTarget()))
+	{
+		return false;
+	}
+	Weapons->Reload();
+	return true;
 }
 
 void UEntropiaPlayerPowers::TryDash()
@@ -289,6 +317,11 @@ void UEntropiaPlayerPowers::EndForTeleport()
 	if (Grab && Grab->IsHolding())
 	{
 		Grab->Release(false);
+	}
+	// Teletransportarte o morir corta la recarga, la cámara lenta del remate y suelta el gatillo.
+	if (Weapons)
+	{
+		Weapons->CancelAll();
 	}
 	if (InverseStep)
 	{

@@ -184,7 +184,7 @@ bool ATemporalProjectile::HitMannequin(ATemporalMannequin* Victim, const FHitRes
 	case EEntropiaShotResult::KnockedDown:
 	{
 		const bool bDown = Victim->IsKnockedDown();
-		TemporalFX::Burst(this, Hit.ImpactPoint, bHead ? FLinearColor(1.f, 0.2f, 0.12f) : FLinearColor(1.f, 0.6f, 0.3f), bDown ? 0.7f : 0.4f);
+		TemporalFX::Burst(this, Hit.ImpactPoint, bHead ? FLinearColor(1.f, 0.2f, 0.12f) : FLinearColor(1.f, 0.6f, 0.3f), bDown ? 0.45f : 0.25f);
 		Notify(bDown ? EEntropiaBulletEvent::KnockedDown : EEntropiaBulletEvent::Hit, Victim);
 		Destroy();
 		return true;
@@ -371,7 +371,8 @@ void ATemporalProjectile::Embed(const FVector& At)
 {
 	SetActorLocation(At - Dir * 5.f);
 	State = EState::Embedded;
-	TemporalFX::Burst(this, At, NormalColor, 0.4f);
+	// Las del jugador son muchas (fusil): chispas más chicas.
+	TemporalFX::Burst(this, At, bFromPlayer ? PlayerColor : NormalColor, bFromPlayer ? 0.12f : 0.4f);
 }
 
 void ATemporalProjectile::ReturnToGun()

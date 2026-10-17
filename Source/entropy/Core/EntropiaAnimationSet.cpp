@@ -41,7 +41,6 @@ namespace EntropiaAnimDefaults
 	const TCHAR* PistolFire = TEXT("/Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Fire.MM_Pistol_Fire");
 	const TCHAR* PistolReload = TEXT("/Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Reload.MM_Pistol_Reload");
 	const TCHAR* RifleAim = TEXT("/Game/Characters/Mannequins/Anims/Rifle/MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS");
-	const TCHAR* RifleFire = TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Fire.MM_Rifle_Fire");
 	const TCHAR* RifleReload = TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Reload.MM_Rifle_Reload");
 
 	FEntropiaAnimSlot Make(const TCHAR* Path, float PlayRate = 1.f, float StartTime = 0.f, bool bLoop = false)
@@ -89,10 +88,10 @@ UEntropiaAnimationSet::UEntropiaAnimationSet()
 	DummyFire = Make(EntropiaAnimDefaults::PistolFire, 1.f);
 
 	RevolverAim = Make(EntropiaAnimDefaults::PistolAim, 1.f, 0.f, true);
-	RevolverFire = Make(EntropiaAnimDefaults::PistolFire, 1.f);
+	// Disparar: vacío por ahora (las de la plantilla son solo para la parte de arriba del cuerpo y, de cuerpo entero,
+	// bajan los brazos). El retroceso de la cámara da el golpe. Aquí van las de Mixamo en el pulido.
 	RevolverReload = Make(EntropiaAnimDefaults::PistolReload, 1.f);
 	RifleAim = Make(EntropiaAnimDefaults::RifleAim, 1.f, 0.f, true);
-	RifleFire = Make(EntropiaAnimDefaults::RifleFire, 1.f);
 	RifleReload = Make(EntropiaAnimDefaults::RifleReload, 1.f);
 }
 
