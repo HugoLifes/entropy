@@ -1,6 +1,7 @@
 // ENTROPÍA · Objeto que se rompe y se rearma
 
 #include "TemporalBreakable.h"
+#include "TemporalFXSubsystem.h"
 #include "TemporalFX.h"
 #include "TemporalFracture.h"
 #include "TemporalShard.h"
@@ -129,6 +130,10 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 	}
 
 	TemporalFX::Burst(this, ImpactPoint, FLinearColor(1.f, 0.6f, 0.2f), 0.8f);
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(ImpactPoint, 0.035f, 0.45f, 0.3f);
+	}
 
 	// Astillas y polvo (reversibles). El piso: la base del objeto.
 	const float FloorZ = GetActorLocation().Z - Size.Z * 0.5f;
@@ -283,6 +288,11 @@ void ATemporalBreakable::Reassemble()
 	Mesh->SetVisibility(true);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(0.3f, 0.7f, 1.f), 0.8f);
+	// Al rearmarse, la onda jala hacia adentro: el tiempo "cierra" el objeto.
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(GetActorLocation(), -0.03f, 0.45f, 0.25f);
+	}
 }
 
 void ATemporalBreakable::Restore()

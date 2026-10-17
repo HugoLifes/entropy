@@ -1,6 +1,7 @@
 // ENTROPÍA · Paso Inverso
 
 #include "InverseStepComponent.h"
+#include "TemporalFXSubsystem.h"
 #include "ObjectInversionComponent.h"
 #include "OverdriveComponent.h"
 #include "TemporalEnergyComponent.h"
@@ -128,6 +129,12 @@ bool UInverseStepComponent::BeginInverseStep()
 	SetPoseProxyVisible(true);
 	AfterimageTimer = 0.f;
 	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(0.3f, 0.6f, 1.f), 0.7f);
+	// Distorsión: onda que jala hacia adentro (el tiempo se recoge) y aura ondulante sobre ti mientras regresas.
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(GetOwner()->GetActorLocation(), -0.03f, 0.5f, 0.4f);
+		FX->SetAura(GetOwner(), 0.012f);
+	}
 	return true;
 }
 
@@ -164,6 +171,11 @@ void UInverseStepComponent::EndInverseStep()
 
 	SetPoseProxyVisible(false);
 	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(0.8f, 0.9f, 1.f), 0.5f);
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->SetAura(nullptr, 0.f);
+		FX->Pulse(GetOwner()->GetActorLocation(), 0.015f, 0.35f, 0.2f);
+	}
 }
 
 void UInverseStepComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

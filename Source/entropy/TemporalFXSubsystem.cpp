@@ -62,6 +62,12 @@ float FTemporalPulseSet::StrengthAt(const FTemporalPulse& Pulse)
 // ---------------------------------------------------------------------------
 // Subsystem
 
+UTemporalFXSubsystem* UTemporalFXSubsystem::Get(const UObject* WorldContext)
+{
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	return World ? World->GetSubsystem<UTemporalFXSubsystem>() : nullptr;
+}
+
 bool UTemporalFXSubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
 {
 	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;

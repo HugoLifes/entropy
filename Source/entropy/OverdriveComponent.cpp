@@ -1,6 +1,7 @@
 // ENTROPÍA · Sobremarcha
 
 #include "OverdriveComponent.h"
+#include "TemporalFXSubsystem.h"
 #include "InverseStepComponent.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalFX.h"
@@ -87,6 +88,11 @@ bool UOverdriveComponent::StartOverdrive()
 	GetOwner()->CustomTimeDilation = 1.f / WorldDilation;
 	Energy->SetActivePower(TEXT("Sobremarcha"));
 	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(TrailColor.R, TrailColor.G, TrailColor.B), 0.8f);
+	// Onda grande hacia afuera: el mundo "se estira" al entrar en Sobremarcha.
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(GetOwner()->GetActorLocation(), 0.04f, 0.8f, 0.8f);
+	}
 	return true;
 }
 
@@ -97,6 +103,10 @@ void UOverdriveComponent::StopOverdrive()
 		return;
 	}
 	bOverdrive = false;
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(GetOwner()->GetActorLocation(), -0.02f, 0.4f, 0.3f);
+	}
 	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 	GetOwner()->CustomTimeDilation = 1.f;
 	if (Energy && Energy->GetActivePower() == TEXT("Sobremarcha"))

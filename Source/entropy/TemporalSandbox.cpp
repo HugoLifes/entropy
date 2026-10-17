@@ -1,6 +1,7 @@
 // ENTROPÍA · Caja de arena temporal
 
 #include "TemporalSandbox.h"
+#include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
 #include "TemporalEnergyComponent.h"
@@ -468,6 +469,10 @@ void ATemporalSandbox::OnBubble()
 	Bubble->LifeSeconds = BubbleSeconds;
 	Bubble->Sphere->SetSphereRadius(BubbleRadius);
 	UGameplayStatics::FinishSpawningActor(Bubble, Transform);
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(Location, 0.03f, 0.6f, 0.35f);
+	}
 }
 
 void ATemporalSandbox::OnRespawnCubes()

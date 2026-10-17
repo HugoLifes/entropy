@@ -1,6 +1,7 @@
 // ENTROPÍA · Invertir objeto
 
 #include "ObjectInversionComponent.h"
+#include "TemporalFXSubsystem.h"
 #include "InverseStepComponent.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalFX.h"
@@ -209,6 +210,10 @@ bool UObjectInversionComponent::BeginInversion()
 	bInverting = true;
 	Energy->SetActivePower(TEXT("Inversion"));
 	TemporalFX::Burst(this, Target->GetOwner()->GetActorLocation(), FLinearColor(1.f, 0.65f, 0.15f), 0.5f);
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(Target->GetOwner()->GetActorLocation(), -0.025f, 0.5f, 0.25f);
+	}
 	return true;
 }
 

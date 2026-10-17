@@ -45,6 +45,9 @@ class ENTROPY_API UTemporalFXSubsystem : public UTickableWorldSubsystem
 	GENERATED_BODY()
 
 public:
+	/** Atajo: el subsystem del mundo de ese objeto (nulo fuera de Play). */
+	static UTemporalFXSubsystem* Get(const UObject* WorldContext);
+
 	/** Onda en un punto del mundo. Strength < 0 = hacia adentro. Duration en segundos reales. */
 	void Pulse(const FVector& WorldLocation, float Strength, float Duration = 0.6f, float MaxRadius = 0.35f);
 
