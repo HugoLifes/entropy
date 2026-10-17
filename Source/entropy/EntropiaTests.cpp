@@ -11,6 +11,7 @@
 #include "Misc/App.h"
 #include "TemporalFracture.h"
 #include "TemporalDebrisComponent.h"
+#include "TemporalFXSubsystem.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -253,6 +254,60 @@ bool FEntropiaDebrisDustScaleShape::RunTest(const FString& Parameters)
 		Peak = FMath::Max(Peak, UTemporalDebrisComponent::DustScale(Life * i / 100.f, Life));
 	}
 	TestTrue(TEXT("Llega a su máximo cerca del primer cuarto de su vida"), UTemporalDebrisComponent::DustScale(Life * 0.25f, Life) > 0.9f * Peak);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 2 · Ondas de distorsión
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaPulseRadiusGrows, "Entropia.Pulse.RadiusGrows", EntropiaTestFlags::Flags)
+bool FEntropiaPulseRadiusGrows::RunTest(const FString& Parameters)
+{
+	FTemporalPulse P;
+	P.Duration = 0.6f;
+	P.MaxRadius = 0.35f;
+	P.Age = 0.f;
+	TestEqual(TEXT("La onda nace en el centro"), FTemporalPulseSet::RadiusAt(P), 0.f, 0.0001f);
+	P.Age = P.Duration;
+	TestEqual(TEXT("Termina en su radio máximo"), FTemporalPulseSet::RadiusAt(P), 0.35f, 0.0001f);
+	P.Age = P.Duration * 0.5f;
+	const float Mid = FTemporalPulseSet::RadiusAt(P);
+	TestTrue(TEXT("Se abre rápido y se frena al final (ease-out)"), Mid > 0.8f * 0.35f && Mid < 0.95f * 0.35f);
+	TestTrue(TEXT("La fuerza se apaga al final"), FTemporalPulseSet::StrengthAt(P) < P.Strength);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaPulseReplacesOldest, "Entropia.Pulse.ReplacesOldest", EntropiaTestFlags::Flags)
+bool FEntropiaPulseReplacesOldest::RunTest(const FString& Parameters)
+{
+	FTemporalPulseSet Set;
+	for (int32 i = 0; i < 5; ++i)
+	{
+		FTemporalPulse P;
+		P.World = FVector(i, 0.f, 0.f);
+		P.Duration = 10.f;
+		Set.Add(P);
+		Set.Advance(0.1f);
+	}
+	TestEqual(TEXT("Nunca hay más de 4 ondas"), Set.Pulses.Num(), FTemporalPulseSet::MaxPulses);
+	bool bFirstStill = false;
+	for (const FTemporalPulse& P : Set.Pulses)
+	{
+		bFirstStill |= FMath::IsNearlyZero(P.World.X);
+	}
+	TestFalse(TEXT("La onda más vieja fue la reemplazada"), bFirstStill);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaPulseExpires, "Entropia.Pulse.Expires", EntropiaTestFlags::Flags)
+bool FEntropiaPulseExpires::RunTest(const FString& Parameters)
+{
+	FTemporalPulseSet Set;
+	FTemporalPulse P;
+	P.Duration = 0.5f;
+	Set.Add(P);
+	Set.Advance(0.51f);
+	TestEqual(TEXT("Una onda vencida desaparece"), Set.Pulses.Num(), 0);
 	return true;
 }
 

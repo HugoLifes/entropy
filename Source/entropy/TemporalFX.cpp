@@ -17,6 +17,9 @@
 #if WITH_EDITOR
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialExpressionCustom.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionSceneTexture.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
@@ -30,11 +33,36 @@ namespace
 	const TCHAR* GhostPackage = TEXT("/Game/Entropia/Materiales/M_TemporalGhost");
 	const TCHAR* GhostObject = TEXT("/Game/Entropia/Materiales/M_TemporalGhost.M_TemporalGhost");
 
+	// Post-process de distorsión del tiempo (ondas + aura). Lo maneja UTemporalFXSubsystem.
+	const TCHAR* DistortionPackage = TEXT("/Game/Entropia/Materiales/M_TemporalDistortion");
+	const TCHAR* DistortionObject = TEXT("/Game/Entropia/Materiales/M_TemporalDistortion.M_TemporalDistortion");
+
 #if WITH_EDITOR
+	/** Compila, registra y guarda en disco un material recién creado. */
+	void SaveNewMaterial(UPackage* Package, UMaterial* Material, const TCHAR* PackageName)
+	{
+		Material->PreEditChange(nullptr);
+		Material->PostEditChange();
+		FAssetRegistryModule::AssetCreated(Material);
+		Package->MarkPackageDirty();
+
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		const FString Filename = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+		if (UPackage::SavePackage(Package, Material, *Filename, Args))
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: creado %s"), PackageName);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ENTROPIA: no se pudo guardar %s"), PackageName);
+		}
+	}
+
 	/** Crea y guarda M_TemporalGhost si todavía no existe: unlit, translúcido, parámetro "Color" (RGB = color, A = opacidad). */
 	void CreateGhostMaterialIfMissing()
 	{
-		if (!GIsEditor || IsRunningCommandlet() || FPackageName::DoesPackageExist(GhostPackage))
+		if (FPackageName::DoesPackageExist(GhostPackage))
 		{
 			return;
 		}
@@ -54,27 +82,124 @@ namespace
 		// Salidas del VectorParameter: 0 = RGB, 4 = A.
 		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, ColorParam);
 		Material->GetEditorOnlyData()->Opacity.Connect(4, ColorParam);
-
-		Material->PreEditChange(nullptr);
-		Material->PostEditChange();
-		FAssetRegistryModule::AssetCreated(Material);
-		Package->MarkPackageDirty();
-
-		FSavePackageArgs Args;
-		Args.TopLevelFlags = RF_Public | RF_Standalone;
-		const FString Filename = FPackageName::LongPackageNameToFilename(GhostPackage, FPackageName::GetAssetPackageExtension());
-		if (UPackage::SavePackage(Package, Material, *Filename, Args))
-		{
-			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: creado %s"), GhostPackage);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("ENTROPIA: no se pudo guardar %s (se usará el material de depuración del motor)"), GhostPackage);
-		}
+		SaveNewMaterial(Package, Material, GhostPackage);
 	}
 
-	// Corre una vez al terminar de arrancar el editor.
-	FDelayedAutoRegisterHelper GCreateGhostMaterial(EDelayedRegisterRunPhase::EndOfEngineInit, [] { CreateGhostMaterialIfMissing(); });
+	/**
+	 * Crea M_TemporalDistortion: post-process con un nodo Custom (HLSL) que dobla la imagen con hasta 4 ondas
+	 * (Pulse0..3: x, y = centro en UV de pantalla; z = radio; w = fuerza) y un aura ondulante (Aura), con aberración de color.
+	 */
+	void CreateDistortionMaterialIfMissing()
+	{
+		if (FPackageName::DoesPackageExist(DistortionPackage))
+		{
+			return;
+		}
+
+		UPackage* Package = CreatePackage(DistortionPackage);
+		UMaterial* Material = NewObject<UMaterial>(Package, TEXT("M_TemporalDistortion"), RF_Public | RF_Standalone);
+		Material->MaterialDomain = MD_PostProcess;
+		Material->BlendableLocation = BL_SceneColorAfterTonemapping;
+
+		UMaterialExpressionCustom* Custom = NewObject<UMaterialExpressionCustom>(Material);
+		Custom->Material = Material;
+		Custom->Description = TEXT("TemporalDistortion");
+		Custom->OutputType = CMOT_Float3;
+		Custom->Code = TEXT(R"HLSL(
+float2 BufUV = GetDefaultSceneTextureUV(Parameters, 14);
+float2 ViewUV = (BufUV * View.BufferSizeAndInvSize.xy - View.ViewRectMin.xy) * View.ViewSizeAndInvSize.zw;
+float Aspect = View.ViewSizeAndInvSize.x / max(View.ViewSizeAndInvSize.y, 1.0);
+float2 Off = float2(0.0, 0.0);
+float Chroma = 0.0;
+float4 P[4] = { Pulse0, Pulse1, Pulse2, Pulse3 };
+for (int i = 0; i < 4; ++i)
+{
+	float2 D = ViewUV - P[i].xy;
+	D.x *= Aspect;
+	float Dist = length(D);
+	float Band = saturate(1.0 - abs(Dist - P[i].z) / max(Thickness, 0.001));
+	Band = Band * Band * (3.0 - 2.0 * Band);
+	float2 Dir = Dist > 0.0001 ? D / Dist : float2(0.0, 0.0);
+	Dir.x /= Aspect;
+	Off += Dir * Band * P[i].w;
+	Chroma += Band * abs(P[i].w);
+}
+{
+	float2 D = ViewUV - Aura.xy;
+	D.x *= Aspect;
+	float Dist = length(D);
+	float Mask = saturate(1.0 - Dist / max(Aura.z, 0.001));
+	Mask *= Mask;
+	float Wave = sin(Dist * 90.0 - View.RealTime * 7.0) * 0.6 + sin(atan2(D.y, D.x) * 6.0 + View.RealTime * 3.0) * 0.4;
+	float2 Dir = Dist > 0.0001 ? D / Dist : float2(0.0, 0.0);
+	Dir.x /= Aspect;
+	Off += Dir * Wave * Mask * Aura.w;
+	Chroma += Mask * abs(Aura.w) * 0.6;
+}
+float2 OffBuf = Off * View.ViewSizeAndInvSize.xy * View.BufferSizeAndInvSize.zw;
+float Split = 0.25 + Chroma * 20.0;
+float R = SceneTextureLookup(BufUV + OffBuf * (1.0 + Split), 14, false).r;
+float G = SceneTextureLookup(BufUV + OffBuf, 14, false).g;
+float B = SceneTextureLookup(BufUV + OffBuf * (1.0 - Split), 14, false).b;
+return float3(R, G, B) + Dummy.rgb * 0.0;
+)HLSL");
+
+		auto AddVector = [Material](const TCHAR* Name)
+		{
+			UMaterialExpressionVectorParameter* Param = NewObject<UMaterialExpressionVectorParameter>(Material);
+			Param->Material = Material;
+			Param->ParameterName = Name;
+			Param->DefaultValue = FLinearColor(0.f, 0.f, 0.f, 0.f);
+			Material->GetExpressionCollection().AddExpression(Param);
+			return Param;
+		};
+
+		Custom->Inputs.Reset();
+		const TCHAR* VectorInputs[] = { TEXT("Pulse0"), TEXT("Pulse1"), TEXT("Pulse2"), TEXT("Pulse3"), TEXT("Aura") };
+		for (const TCHAR* Name : VectorInputs)
+		{
+			FCustomInput Input;
+			Input.InputName = Name;
+			// Salida 5 del VectorParameter = RGBA (float4).
+			Input.Input.Connect(5, AddVector(Name));
+			Custom->Inputs.Add(Input);
+		}
+
+		UMaterialExpressionScalarParameter* Thickness = NewObject<UMaterialExpressionScalarParameter>(Material);
+		Thickness->Material = Material;
+		Thickness->ParameterName = TEXT("Thickness");
+		Thickness->DefaultValue = 0.06f;
+		Material->GetExpressionCollection().AddExpression(Thickness);
+		FCustomInput ThicknessInput;
+		ThicknessInput.InputName = TEXT("Thickness");
+		ThicknessInput.Input.Connect(0, Thickness);
+		Custom->Inputs.Add(ThicknessInput);
+
+		// Un SceneTexture(PostProcessInput0) conectado para que la imagen quede ligada al material (SceneTextureLookup la lee).
+		UMaterialExpressionSceneTexture* Scene = NewObject<UMaterialExpressionSceneTexture>(Material);
+		Scene->Material = Material;
+		Scene->SceneTextureId = PPI_PostProcessInput0;
+		Material->GetExpressionCollection().AddExpression(Scene);
+		FCustomInput DummyInput;
+		DummyInput.InputName = TEXT("Dummy");
+		DummyInput.Input.Connect(0, Scene);
+		Custom->Inputs.Add(DummyInput);
+
+		Material->GetExpressionCollection().AddExpression(Custom);
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Custom);
+		SaveNewMaterial(Package, Material, DistortionPackage);
+	}
+
+	// Corre una vez al terminar de arrancar el motor con el editor (también con -game desde el editor, para el tour).
+	FDelayedAutoRegisterHelper GCreateEntropiaMaterials(EDelayedRegisterRunPhase::EndOfEngineInit, []
+	{
+		if (IsRunningCommandlet())
+		{
+			return;
+		}
+		CreateGhostMaterialIfMissing();
+		CreateDistortionMaterialIfMissing();
+	});
 #endif
 
 	UMaterialInterface* TranslucentBase()
@@ -111,6 +236,16 @@ namespace
 		}
 		return Cached.Get();
 	}
+}
+
+UMaterialInterface* TemporalFX::DistortionMaterial()
+{
+	static TWeakObjectPtr<UMaterialInterface> Cached;
+	if (!Cached.IsValid())
+	{
+		Cached = LoadObject<UMaterialInterface>(nullptr, DistortionObject, nullptr, LOAD_NoWarn);
+	}
+	return Cached.Get();
 }
 
 UMaterialInstanceDynamic* TemporalFX::MakeTranslucent(UObject* Outer, const FLinearColor& Color)
