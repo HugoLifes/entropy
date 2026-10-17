@@ -690,4 +690,13 @@ bool FEntropiaParkourPath::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourLedgeReach, "Entropia.Parkour.LedgeReach", EntropiaTestFlags::Flags)
+bool FEntropiaParkourLedgeReach::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Borde a 1.5 m sobre los pies: lo alcanzas"), EntropiaParkour::CanGrabLedge(150.f));
+	TestFalse(TEXT("Borde a 1 m: muy bajo, mejor subir"), EntropiaParkour::CanGrabLedge(100.f));
+	TestFalse(TEXT("Borde a 2.6 m: no llegan las manos"), EntropiaParkour::CanGrabLedge(260.f));
+	return true;
+}
+
 #endif

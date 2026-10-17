@@ -49,6 +49,9 @@ void ATemporalParkourRoom::Build()
 	// Carril central (Y = 150): muro de 2 m y muro de 3 m (con plataforma arriba).
 	EntropiaRooms::AddBlock(this, FVector(1100.f, 150.f, 100.f), FVector(600.f, 400.f, 200.f), EntropiaParkourRoom::HighColor);
 	EntropiaRooms::AddBlock(this, FVector(2200.f, 150.f, 150.f), FVector(600.f, 400.f, 300.f), EntropiaParkourRoom::HighColor);
+
+	// Carril derecho (Y = 600): muro de 3.4 m con su borde arriba (cornisa) para colgarse y moverse de lado.
+	EntropiaRooms::AddBlock(this, FVector(1000.f, 600.f, 170.f), FVector(600.f, 300.f, 340.f), FLinearColor(0.55f, 0.4f, 0.65f));
 }
 
 void ATemporalParkourRoom::PlacePlayer(const FVector& Local) const

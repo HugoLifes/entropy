@@ -33,6 +33,11 @@ namespace EntropiaParkour
 		return EEntropiaTraversal::None;
 	}
 
+	bool CanGrabLedge(float EdgeHeightAboveFeet)
+	{
+		return EdgeHeightAboveFeet >= LedgeMinHeight && EdgeHeightAboveFeet <= LedgeMaxHeight;
+	}
+
 	float SmoothAlpha(float A)
 	{
 		const float T = FMath::Clamp(A, 0.f, 1.f);
@@ -83,6 +88,7 @@ namespace EntropiaParkour
 		case EEntropiaTraversal::StepUp: return 0.45f;
 		case EEntropiaTraversal::Climb: return 0.9f;
 		case EEntropiaTraversal::WallRun: return 1.1f;
+		case EEntropiaTraversal::HangClimb: return 0.7f;
 		default: return 0.f;
 		}
 	}
@@ -96,6 +102,7 @@ namespace EntropiaParkour
 		case EEntropiaTraversal::StepUp: return TEXT("subir");
 		case EEntropiaTraversal::Climb: return TEXT("trepar");
 		case EEntropiaTraversal::WallRun: return TEXT("pared");
+		case EEntropiaTraversal::HangClimb: return TEXT("subir_de_orilla");
 		default: return TEXT("nada");
 		}
 	}

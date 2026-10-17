@@ -33,7 +33,9 @@ enum class EEntropiaTraversal : uint8
 	Kong,
 	StepUp,
 	Climb,
-	WallRun
+	WallRun,
+	/** Subir desde colgado de una orilla. */
+	HangClimb
 };
 
 namespace EntropiaParkour
@@ -50,8 +52,16 @@ namespace EntropiaParkour
 	constexpr float WallGap = 47.f;
 	/** Cuánto pasa la cadera por encima del borde al saltarlo. */
 	constexpr float VaultClearance = 55.f;
+	/** Una orilla se puede agarrar si está entre estas alturas sobre los pies. */
+	constexpr float LedgeMinHeight = 120.f;
+	constexpr float LedgeMaxHeight = 230.f;
+	/** Colgado: el centro de la cápsula queda esto por debajo del borde (los brazos arriba). */
+	constexpr float HangDrop = 120.f;
 
 	ENTROPY_API EEntropiaTraversal Classify(const FEntropiaObstacle& Obstacle, bool bSprinting);
+
+	/** ¿Alcanzan las manos una orilla a esta altura sobre los pies? */
+	ENTROPY_API bool CanGrabLedge(float EdgeHeightAboveFeet);
 
 	/** Posición del centro de la cápsula en Alpha (0 = Start, 1 = End). Edge = punto de la cara del obstáculo a la altura del borde. */
 	ENTROPY_API FVector PathPoint(EEntropiaTraversal Kind, const FVector& Start, const FVector& Edge, const FVector& End, float Alpha);

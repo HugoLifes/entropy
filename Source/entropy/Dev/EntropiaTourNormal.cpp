@@ -546,6 +546,78 @@ void UEntropiaTourComponent::BuildNormalSteps()
 	Add(TEXT("trepar_fin"), 0.6f, [LogWhere] { LogWhere(TEXT("trepar_fin")); });
 	Add(TEXT("pared"), 1.3f, [ParkourAt] { ParkourAt(FVector(1810.f, 150.f, 98.f), true); });
 	Add(TEXT("pared_fin"), 0.8f, [LogWhere] { LogWhere(TEXT("pared_fin")); });
+	// Fase 3b · Orillas: saltar hacia el muro de 3.4 m (fuera de alcance para trepar) y colgarse del borde.
+	auto Hold = [this](const FVector& Direction)
+	{
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetTourInput(Direction);
+		}
+	};
+	auto LogHang = [this, Player](const TCHAR* Name)
+	{
+		const FVector Local = Player() && Rooms->ParkourRoom ? Rooms->ParkourRoom->GetActorTransform().InverseTransformPosition(Player()->GetActorLocation()) : FVector::ZeroVector;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s colgado=%d y=%.0f z=%.0f"), Name, Powers->Parkour && Powers->Parkour->IsHanging() ? 1 : 0, Local.Y, Local.Z);
+	};
+	Add(TEXT("colgarse"), 1.2f, [this, Player, Hold]
+	{
+		if (Rooms->ParkourRoom)
+		{
+			Rooms->ParkourRoom->PlacePlayer(FVector(600.f, 600.f, 98.f));
+			Hold(Rooms->ParkourRoom->GetActorForwardVector());
+		}
+		if (Player())
+		{
+			Player()->Jump();
+		}
+	});
+	Add(TEXT("orilla_de_lado"), 1.f, [this, Hold, LogHang]
+	{
+		LogHang(TEXT("colgarse"));
+		if (Rooms->ParkourRoom)
+		{
+			Hold(Rooms->ParkourRoom->GetActorRightVector());
+		}
+	});
+	Add(TEXT("orilla_sube"), 1.f, [this, Player, Hold, LogHang]
+	{
+		LogHang(TEXT("orilla_de_lado"));
+		if (Rooms->ParkourRoom)
+		{
+			Hold(Rooms->ParkourRoom->GetActorForwardVector());
+		}
+		if (Player())
+		{
+			Player()->Jump();
+		}
+	});
+	Add(TEXT("orilla_arriba"), 0.5f, [Hold, LogHang]
+	{
+		LogHang(TEXT("orilla_sube"));
+		Hold(FVector::ZeroVector);
+	});
+	Add(TEXT("orilla_soltar"), 1.2f, [this, Player, Hold, LogHang]
+	{
+		if (Rooms->ParkourRoom)
+		{
+			Rooms->ParkourRoom->PlacePlayer(FVector(600.f, 650.f, 98.f));
+			Hold(Rooms->ParkourRoom->GetActorForwardVector());
+		}
+		if (Player())
+		{
+			Player()->Jump();
+		}
+	});
+	Add(TEXT("orilla_soltar_c"), 0.8f, [this, Hold, LogHang]
+	{
+		LogHang(TEXT("antes_de_soltar"));
+		Hold(FVector::ZeroVector);
+		if (Powers->Parkour)
+		{
+			Powers->Parkour->Drop();
+		}
+	});
+	Add(TEXT("orilla_suelto"), 0.3f, [LogHang] { LogHang(TEXT("suelto")); });
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		Rooms->GoToRoom(2);

@@ -2,6 +2,7 @@
 
 #include "EntropiaControlsComponent.h"
 #include "EntropiaLocomotionComponent.h"
+#include "EntropiaParkourComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -268,6 +269,12 @@ void UEntropiaControlsComponent::OnSprintReleased()
 
 void UEntropiaControlsComponent::OnCrouch()
 {
+	// Colgado de una orilla, C te suelta.
+	if (Powers->Parkour && Powers->Parkour->IsHanging())
+	{
+		Powers->Parkour->Drop();
+		return;
+	}
 	if (Powers->Locomotion)
 	{
 		Powers->Locomotion->ToggleCrouch();

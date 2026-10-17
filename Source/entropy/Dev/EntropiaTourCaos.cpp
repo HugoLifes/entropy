@@ -1,6 +1,9 @@
 // ENTROPÍA · Tour "caos": hacer cosas raras a propósito para buscar errores, fugas y estados rotos.
 
 #include "EntropiaTourComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "EntropiaLocomotionComponent.h"
+#include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -413,6 +416,67 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_revisa global=%.2f jugador=%.2f"), Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 3b · Parkour con todo encima: F a medio salto, morir colgado, teletransportarse colgado, dash colgado.
+	auto Movement = [this]()
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		return Character ? static_cast<int32>(Character->GetCharacterMovement()->MovementMode) : -1;
+	};
+	Add(TEXT("parkour_y_f_prepara"), 0.8f, [this]
+	{
+		Rooms->GoToRoom(6);
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
+	});
+	Add(TEXT("parkour_y_f"), 0.3f, [this]
+	{
+		if (ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0))) { Character->Jump(); }
+		const bool bVaulting = Powers->Parkour && Powers->Parkour->IsBusy();
+		const bool bInverse = Powers->InverseStep && Powers->InverseStep->BeginInverseStep();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR parkour_y_f saltando=%d paso_inverso=%d"), bVaulting ? 1 : 0, bInverse ? 1 : 0);
+	});
+	Add(TEXT("parkour_y_f_suelta"), 0.6f, [this]
+	{
+		if (Powers->InverseStep) { Powers->InverseStep->EndInverseStep(); }
+	});
+	Add(TEXT("parkour_y_f_revisa"), 0.2f, [this, Movement]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR parkour_y_f_fin ocupado=%d modo=%d"), Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0, Movement());
+	});
+	auto HangAgain = [this]()
+	{
+		if (Rooms->ParkourRoom)
+		{
+			Rooms->ParkourRoom->PlacePlayer(FVector(600.f, 600.f, 98.f));
+			if (Powers->Locomotion) { Powers->Locomotion->SetTourInput(Rooms->ParkourRoom->GetActorForwardVector()); }
+		}
+		if (ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0))) { Character->Jump(); }
+	};
+	Add(TEXT("colgado_y_dash_v"), 1.f, [HangAgain] { HangAgain(); });
+	Add(TEXT("colgado_dash_v"), 0.6f, [this]
+	{
+		Powers->TryDash();
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+	});
+	Add(TEXT("colgado_teletransporte"), 0.6f, [this, Movement]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+		const bool bWasHanging = Powers->Parkour && Powers->Parkour->IsHanging();
+		Rooms->GoToRoom(4);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR colgado_teletransporte estaba=%d ocupado=%d modo=%d"), bWasHanging ? 1 : 0,
+			Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0, Movement());
+	});
+	Add(TEXT("colgado_y_morir"), 1.f, [this, HangAgain] { Rooms->GoToRoom(6); HangAgain(); });
+	Add(TEXT("colgado_muere"), 0.5f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR antes_de_morir colgado=%d"), Powers->Parkour && Powers->Parkour->IsHanging() ? 1 : 0);
+		if (Powers->Locomotion) { Powers->Locomotion->SetTourInput(FVector::ZeroVector); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("colgado_muere_revisa"), 0.5f, [this, Movement]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tras_morir_colgado ocupado=%d modo=%d vida=%.0f"),
+			Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0, Movement(), Powers->Health ? Powers->Health->Health : -1.f);
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

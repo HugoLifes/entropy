@@ -31,6 +31,18 @@ ACharacter* UEntropiaParkourComponent::GetCharacter() const
 	return Cast<ACharacter>(GetOwner());
 }
 
+FVector UEntropiaParkourComponent::InputDirection() const
+{
+	const ACharacter* Character = GetCharacter();
+	FVector Direction = Character->GetPendingMovementInputVector();
+	if (Direction.SizeSquared2D() < KINDA_SMALL_NUMBER)
+	{
+		Direction = Character->GetLastMovementInputVector();
+	}
+	Direction.Z = 0.f;
+	return Direction.SizeSquared() < KINDA_SMALL_NUMBER ? FVector::ZeroVector : Direction.GetSafeNormal();
+}
+
 FVector UEntropiaParkourComponent::IntentDirection() const
 {
 	const ACharacter* Character = GetCharacter();
@@ -141,6 +153,12 @@ bool UEntropiaParkourComponent::TryStart()
 	{
 		return false;
 	}
+	if (bHanging)
+	{
+		// Colgado: Espacio sube (si hay espacio arriba).
+		TryClimbFromHang();
+		return true;
+	}
 	if (IsBusy())
 	{
 		// A medio movimiento, Espacio no hace nada (ni salta).
@@ -148,9 +166,14 @@ bool UEntropiaParkourComponent::TryStart()
 	}
 	const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
 	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
-	if ((Inverse && Inverse->IsInverseActive()) || !Move || !Move->IsMovingOnGround())
+	if ((Inverse && Inverse->IsInverseActive()) || !Move)
 	{
 		return false;
+	}
+	if (!Move->IsMovingOnGround())
+	{
+		// En el aire, Espacio agarra una orilla si la tienes enfrente.
+		return Move->IsFalling() && TryGrabLedge(false);
 	}
 
 	UEntropiaLocomotionComponent* Locomotion = Character->FindComponentByClass<UEntropiaLocomotionComponent>();
@@ -225,8 +248,176 @@ void UEntropiaParkourComponent::Finish()
 	EntropiaAnim::Stop(Character, 0.2f);
 }
 
+bool UEntropiaParkourComponent::TryGrabLedge(bool bNeedIntent)
+{
+	ACharacter* Character = GetCharacter();
+	const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	UWorld* World = GetWorld();
+	if (!Capsule || !World || IsBusy() || GrabCooldown > 0.f)
+	{
+		return false;
+	}
+	const FVector Input = InputDirection();
+	if (bNeedIntent && Input.IsNearlyZero())
+	{
+		return false;
+	}
+	const FVector Forward = Input.IsNearlyZero() ? IntentDirection() : Input;
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector Center = Character->GetActorLocation();
+	const float FeetZ = Center.Z - HalfHeight;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(EntropiaLedge), false, Character);
+
+	// Una pared enfrente, a la altura del pecho.
+	const FVector Chest = Center + FVector(0.f, 0.f, HalfHeight * 0.5f);
+	FHitResult Face;
+	if (!World->LineTraceSingleByChannel(Face, Chest, Chest + Forward * (Radius + 60.f), ECC_Visibility, Params)
+		|| (Face.GetActor() && Face.GetActor()->IsA<APawn>()) || FMath::Abs(Face.ImpactNormal.Z) > 0.5f)
+	{
+		return false;
+	}
+	FVector Into = -Face.ImpactNormal;
+	Into.Z = 0.f;
+	Into = Into.GetSafeNormal();
+	if (bNeedIntent && FVector::DotProduct(Input, Into) < 0.5f)
+	{
+		return false;
+	}
+
+	// Su borde, al alcance de las manos.
+	const FVector Inside = Face.ImpactPoint + Into * 10.f;
+	FHitResult Top;
+	if (!World->LineTraceSingleByChannel(Top, FVector(Inside.X, Inside.Y, FeetZ + EntropiaParkour::LedgeMaxHeight + 30.f),
+		FVector(Inside.X, Inside.Y, FeetZ + EntropiaParkour::LedgeMinHeight - 30.f), ECC_Visibility, Params) || Top.bStartPenetrating)
+	{
+		return false;
+	}
+	if (!EntropiaParkour::CanGrabLedge(Top.ImpactPoint.Z - FeetZ))
+	{
+		return false;
+	}
+	const FVector Edge(Face.ImpactPoint.X, Face.ImpactPoint.Y, Top.ImpactPoint.Z);
+	const FVector HangPos = Edge - Into * (Radius + 5.f) - FVector(0.f, 0.f, EntropiaParkour::HangDrop);
+	if (World->OverlapBlockingTestByChannel(HangPos, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params))
+	{
+		return false;
+	}
+	StartHang(Edge, Into);
+	return true;
+}
+
+void UEntropiaParkourComponent::StartHang(const FVector& Edge, const FVector& Into)
+{
+	ACharacter* Character = GetCharacter();
+	const float Radius = Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	bHanging = true;
+	LedgeEdge = Edge;
+	LedgeInto = Into;
+	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
+	Move->StopMovementImmediately();
+	Move->DisableMovement();
+	Character->SetActorLocationAndRotation(Edge - Into * (Radius + 5.f) - FVector(0.f, 0.f, EntropiaParkour::HangDrop),
+		FRotator(0.f, Into.Rotation().Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+	{
+		EntropiaAnim::Play(Character, Set->Hang);
+	}
+}
+
+bool UEntropiaParkourComponent::LedgeContinuesAt(const FVector& EdgePoint) const
+{
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(EntropiaLedgeAlong), false, GetCharacter());
+	const FVector Inside = EdgePoint + LedgeInto * 10.f;
+	FHitResult Top;
+	return GetWorld()->LineTraceSingleByChannel(Top, Inside + FVector(0.f, 0.f, 40.f), Inside - FVector(0.f, 0.f, 40.f), ECC_Visibility, Params)
+		&& !Top.bStartPenetrating && FMath::Abs(Top.ImpactPoint.Z - EdgePoint.Z) < 25.f;
+}
+
+void UEntropiaParkourComponent::UpdateHang(float DeltaTime)
+{
+	ACharacter* Character = GetCharacter();
+	const FVector Input = InputDirection();
+	const FVector Right = FVector::CrossProduct(FVector::UpVector, LedgeInto).GetSafeNormal();
+	const float Side = FVector::DotProduct(Input, Right);
+	if (FMath::Abs(Side) < 0.3f)
+	{
+		return;
+	}
+	// De lado, mientras siga habiendo orilla y no choques con nada.
+	const FVector Step = Right * FMath::Sign(Side) * ShimmySpeed * DeltaTime;
+	const FVector NewEdge = LedgeEdge + Step;
+	if (!LedgeContinuesAt(NewEdge + Right * FMath::Sign(Side) * Character->GetCapsuleComponent()->GetScaledCapsuleRadius()))
+	{
+		return;
+	}
+	FHitResult Blocked;
+	Character->SetActorLocation(Character->GetActorLocation() + Step, true, &Blocked);
+	if (!Blocked.bBlockingHit)
+	{
+		LedgeEdge = NewEdge;
+	}
+}
+
+bool UEntropiaParkourComponent::TryClimbFromHang()
+{
+	ACharacter* Character = GetCharacter();
+	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector TopStand = LedgeEdge + LedgeInto * (Radius + 15.f) + FVector(0.f, 0.f, HalfHeight + 2.f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(EntropiaLedgeClimb), false, Character);
+	if (GetWorld()->OverlapBlockingTestByChannel(TopStand, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params))
+	{
+		return false;
+	}
+	bHanging = false;
+	Current = EEntropiaTraversal::HangClimb;
+	Elapsed = 0.f;
+	Duration = EntropiaParkour::Duration(Current);
+	PathStart = Character->GetActorLocation();
+	PathEdge = LedgeEdge;
+	PathEnd = TopStand;
+	ExitDirection = LedgeInto;
+	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+	{
+		EntropiaAnim::Play(Character, Set->ClimbFromHang);
+	}
+	return true;
+}
+
+void UEntropiaParkourComponent::Drop()
+{
+	if (!bHanging)
+	{
+		return;
+	}
+	bHanging = false;
+	GrabCooldown = 0.5f;
+	ACharacter* Character = GetCharacter();
+	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
+	Move->SetMovementMode(MOVE_Falling);
+	Move->Velocity = -LedgeInto * 150.f;
+	EntropiaAnim::Stop(Character, 0.2f);
+}
+
 void UEntropiaParkourComponent::Cancel()
 {
+	if (bHanging)
+	{
+		bHanging = false;
+		GrabCooldown = 0.5f;
+		if (ACharacter* Character = GetCharacter())
+		{
+			const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
+			if (!(Inverse && Inverse->IsInverseActive()))
+			{
+				Character->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+			}
+			EntropiaAnim::Stop(Character, 0.2f);
+		}
+		return;
+	}
 	if (!IsBusy())
 	{
 		return;
@@ -247,11 +438,33 @@ void UEntropiaParkourComponent::Cancel()
 void UEntropiaParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	if (!IsBusy())
+	GrabCooldown = FMath::Max(0.f, GrabCooldown - DeltaTime);
+	ACharacter* Character = GetCharacter();
+	if (!Character)
 	{
 		return;
 	}
-	ACharacter* Character = GetCharacter();
+	if (!IsBusy())
+	{
+		// Cayendo hacia un borde: te cuelgas solo si empujas el stick hacia él.
+		const UCharacterMovementComponent* Move = Character->GetCharacterMovement();
+		if (Move && Move->IsFalling())
+		{
+			TryGrabLedge(true);
+		}
+		return;
+	}
+	if (bHanging)
+	{
+		const UInverseStepComponent* InverseNow = Character->FindComponentByClass<UInverseStepComponent>();
+		if (InverseNow && InverseNow->IsInverseActive())
+		{
+			Cancel();
+			return;
+		}
+		UpdateHang(DeltaTime);
+		return;
+	}
 	const UInverseStepComponent* Inverse = Character ? Character->FindComponentByClass<UInverseStepComponent>() : nullptr;
 	if (!Character || (Inverse && Inverse->IsInverseActive()))
 	{

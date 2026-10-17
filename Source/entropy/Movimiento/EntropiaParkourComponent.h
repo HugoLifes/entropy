@@ -4,6 +4,8 @@
 // Mide el obstáculo con trazos (altura, fondo, espacio arriba y del otro lado), decide con EntropiaParkour::Classify
 // y mueve al personaje por EntropiaParkour::PathPoint. La animación (DA_Animaciones) solo es el aspecto.
 // Mientras dura, el CharacterMovement queda apagado (MOVE_None); siempre se puede cancelar (F, morir, teletransporte).
+// Orillas: si al saltar o caer vas hacia un borde que alcanzan tus manos, te cuelgas. Colgado te mueves de lado con el
+// stick, Espacio sube y C te suelta.
 
 #pragma once
 
@@ -22,6 +24,9 @@ class ENTROPY_API UEntropiaParkourComponent : public UActorComponent
 public:
 	UEntropiaParkourComponent();
 
+	/** Velocidad al moverte de lado colgado (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") float ShimmySpeed = 120.f;
+
 	/** Velocidad con la que sales de un dash vault y del gato (cm/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") float VaultExitSpeed = 450.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") float KongExitSpeed = 650.f;
@@ -35,7 +40,14 @@ public:
 	 */
 	FEntropiaObstacle Measure(FVector& OutEdge, FVector& OutTop, FVector& OutLanding, FVector& OutInto) const;
 
-	bool IsBusy() const { return Current != EEntropiaTraversal::None; }
+	bool IsBusy() const { return Current != EEntropiaTraversal::None || bHanging; }
+	bool IsHanging() const { return bHanging; }
+
+	/** Colgado: te sueltas y caes (C). */
+	void Drop();
+
+	/** Si vas hacia un borde que alcanzan tus manos, te cuelgas. bNeedIntent: solo si empujas el stick hacia él. */
+	bool TryGrabLedge(bool bNeedIntent);
 	EEntropiaTraversal GetCurrent() const { return Current; }
 	EEntropiaTraversal GetLast() const { return Last; }
 
@@ -49,6 +61,12 @@ private:
 	void Finish();
 	/** Hacia dónde mira el intento: el stick si lo mueves; si no, hacia donde miras. */
 	FVector IntentDirection() const;
+	/** Solo el stick (cero si no lo mueves). */
+	FVector InputDirection() const;
+	void StartHang(const FVector& Edge, const FVector& Into);
+	void UpdateHang(float DeltaTime);
+	bool TryClimbFromHang();
+	bool LedgeContinuesAt(const FVector& EdgePoint) const;
 
 	EEntropiaTraversal Current = EEntropiaTraversal::None;
 	EEntropiaTraversal Last = EEntropiaTraversal::None;
@@ -58,4 +76,9 @@ private:
 	FVector PathEdge = FVector::ZeroVector;
 	FVector PathEnd = FVector::ZeroVector;
 	FVector ExitDirection = FVector::ForwardVector;
+
+	bool bHanging = false;
+	FVector LedgeEdge = FVector::ZeroVector;
+	FVector LedgeInto = FVector::ForwardVector;
+	float GrabCooldown = 0.f;
 };
