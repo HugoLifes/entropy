@@ -42,6 +42,7 @@
 #include "TemporalTurret.h"
 #include "TemporalProjectile.h"
 #include "EntropiaWeaponComponent.h"
+#include "TemporalShootingRoom.h"
 #include "EntropiaWeaponSet.h"
 
 #include "Components/CapsuleComponent.h"
@@ -1267,6 +1268,21 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
 		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
 		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 4 · Sala 8 · Tiroteo: 4 dummies a distintas distancias, un muro rompible y cajas.
+	Add(TEXT("sala8"), 1.6f, [this]
+	{
+		Rooms->GoToRoom(8);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0)) { PC->SetControlRotation(FRotator(-6.f, PC->GetControlRotation().Yaw, 0.f)); }
+	});
+	Add(TEXT("sala8_revisa"), 0.2f, [this]
+	{
+		const ATemporalShootingRoom* Room = Rooms->ShootingRoom;
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala8 dummies=%d rompibles=%d dentro=%d"), Room ? Room->GetDummies().Num() : -1, Room ? Room->GetBreakables().Num() : -1,
+			Room && Pawn && FVector::Dist(Pawn->GetActorLocation(), Room->RoomToWorld(FVector(200.f, 0.f, 98.f))) < 150.f ? 1 : 0);
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]

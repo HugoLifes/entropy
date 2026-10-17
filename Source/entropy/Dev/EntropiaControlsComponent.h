@@ -43,6 +43,7 @@ private:
 	void OnRoom5();
 	void OnRoom6();
 	void OnRoom7();
+	void OnRoom8();
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();

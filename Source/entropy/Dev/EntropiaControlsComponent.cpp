@@ -87,6 +87,7 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::Five, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom5);
 	Input->BindKey(EKeys::Six, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom6);
 	Input->BindKey(EKeys::Seven, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom7);
+	Input->BindKey(EKeys::Eight, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom8);
 	Input->BindKey(EKeys::Z, IE_Pressed, this, &UEntropiaControlsComponent::OnFire);
 	Input->BindKey(EKeys::X, IE_Pressed, this, &UEntropiaControlsComponent::OnFireInverted);
 	Input->BindKey(EKeys::B, IE_Pressed, this, &UEntropiaControlsComponent::OnBreakInFront);
@@ -111,7 +112,7 @@ void UEntropiaControlsComponent::ShowHelp() const
 		GEngine->AddOnScreenDebugMessage(1001, 40.f, FColor(120, 220, 255),
 			TEXT("PELEA Y PODERES · Clic izq.: golpes (apuntando: disparar) · Rueda: cambiar arma · R: invertir (sin nada en la mira: recargar) · Q: burbuja (apuntando a algo: detener) · E: agarrar · F: Paso Inverso · Ctrl+R: todo · V: Sobremarcha · N: nivel 2 = detener todo · H: eco · G: borrar ecos · T: cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
-			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 0: volver a las cajas"));
+			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 8: Tiroteo · 0: volver a las cajas"));
 	}
 }
 
@@ -227,6 +228,11 @@ void UEntropiaControlsComponent::OnRoom6()
 void UEntropiaControlsComponent::OnRoom7()
 {
 	Rooms->GoToRoom(7);
+}
+
+void UEntropiaControlsComponent::OnRoom8()
+{
+	Rooms->GoToRoom(8);
 }
 
 void UEntropiaControlsComponent::OnFire()

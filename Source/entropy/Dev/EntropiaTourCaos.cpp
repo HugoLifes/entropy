@@ -43,6 +43,7 @@
 #include "TemporalTurret.h"
 #include "TemporalProjectile.h"
 #include "EntropiaWeaponComponent.h"
+#include "TemporalShootingRoom.h"
 #include "EntropiaWeaponSet.h"
 
 #include "Components/CapsuleComponent.h"
@@ -935,6 +936,35 @@ void UEntropiaTourComponent::BuildChaosSteps()
 			Powers->Health && Powers->Health->GetFraction() >= 1.f ? 1 : 0);
 		Powers->CycleTimeStopLevel();
 		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+	});
+	// Fase 4 · Lluvia detenida en la sala 8 y teletransporte a la 7 antes de que vuelva el tiempo: todo vuelve a la normalidad.
+	Add(TEXT("sala8_lluvia_prepara"), 0.8f, [this]
+	{
+		Rooms->GoToRoom(8);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+	});
+	Add(TEXT("sala8_lluvia"), 0.5f, [this]
+	{
+		Powers->SpawnBubble();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("sala8_teleport"), 0.4f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala8_antes mundo=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0);
+		Rooms->GoToRoom(7);
+	});
+	Add(TEXT("sala8_teleport_revisa"), 0.4f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala8_teleport_lluvia mundo=%d global=%.2f"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f);
+		Powers->CycleTimeStopLevel();
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }
