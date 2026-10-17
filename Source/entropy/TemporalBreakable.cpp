@@ -4,6 +4,7 @@
 #include "TemporalFX.h"
 #include "TemporalFracture.h"
 #include "TemporalShard.h"
+#include "TemporalDebrisComponent.h"
 #include "TemporalRecorderComponent.h"
 
 #include "Components/StaticMeshComponent.h"
@@ -32,6 +33,8 @@ ATemporalBreakable::ATemporalBreakable()
 		Mesh->SetStaticMesh(Cube.Object);
 	}
 	SetRootComponent(Mesh);
+
+	Debris = CreateDefaultSubobject<UTemporalDebrisComponent>(TEXT("Debris"));
 }
 
 void ATemporalBreakable::OnConstruction(const FTransform& Transform)
@@ -61,6 +64,22 @@ void ATemporalBreakable::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	Invulnerable = FMath::Max(0.f, Invulnerable - DeltaTime);
+
+	// Los escombros siguen a los pedazos: si alguno se rebobina, el polvo también regresa (a su misma velocidad).
+	if (bBroken && Debris)
+	{
+		bool bAnyRewinding = false;
+		float Speed = 1.f;
+		for (const UTemporalRecorderComponent* Recorder : GetShardRecorders())
+		{
+			if (Recorder->IsRewinding())
+			{
+				bAnyRewinding = true;
+				Speed = FMath::Max(Speed, Recorder->RewindSpeed);
+			}
+		}
+		Debris->SetRewinding(bAnyRewinding, Speed);
+	}
 }
 
 void ATemporalBreakable::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -110,6 +129,10 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 	}
 
 	TemporalFX::Burst(this, ImpactPoint, FLinearColor(1.f, 0.6f, 0.2f), 0.8f);
+
+	// Astillas y polvo (reversibles). El piso: la base del objeto.
+	const float FloorZ = GetActorLocation().Z - Size.Z * 0.5f;
+	Debris->Burst(ImpactPoint, Direction, Color, FloorZ);
 }
 
 void ATemporalBreakable::SpawnIrregularShards(const FVector& ImpactPoint)
@@ -254,6 +277,7 @@ void ATemporalBreakable::HandleShardRewindFinished()
 void ATemporalBreakable::Reassemble()
 {
 	DestroyShards();
+	Debris->Hide();
 	bBroken = false;
 	Invulnerable = 0.4f;
 	Mesh->SetVisibility(true);

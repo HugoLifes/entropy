@@ -10,6 +10,7 @@
 #include "TemporalFX.h"
 #include "Misc/App.h"
 #include "TemporalFracture.h"
+#include "TemporalDebrisComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -205,6 +206,53 @@ bool FEntropiaFractureDeterministic::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("Las semillas quedan dentro de la caja"), FMath::Abs(P.X) <= Half.X && FMath::Abs(P.Y) <= Half.Y && FMath::Abs(P.Z) <= Half.Z);
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 2 · Escombros reversibles (movimiento analítico)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDebrisStartsAtOrigin, "Entropia.Debris.StartsAtOrigin", EntropiaTestFlags::Flags)
+bool FEntropiaDebrisStartsAtOrigin::RunTest(const FString& Parameters)
+{
+	FDebrisParticle P;
+	P.Origin = FVector(10.f, 20.f, 300.f);
+	P.Velocity = FVector(200.f, -100.f, 350.f);
+	P.Size = 8.f;
+	TestTrue(TEXT("En T = 0 la astilla está en el punto del golpe (rebobinar la regresa ahí)"),
+		UTemporalDebrisComponent::EvaluateChip(P, 0.f, -1000.f).Equals(P.Origin, 0.01f));
+	const FVector A = UTemporalDebrisComponent::EvaluateChip(P, 0.3f, -1000.f);
+	const FVector B = UTemporalDebrisComponent::EvaluateChip(P, 0.3f, -1000.f);
+	TestTrue(TEXT("Mismo T = misma posición (determinista: sirve para reproducir hacia atrás)"), A.Equals(B, 0.001f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDebrisStopsAtFloor, "Entropia.Debris.StopsAtFloor", EntropiaTestFlags::Flags)
+bool FEntropiaDebrisStopsAtFloor::RunTest(const FString& Parameters)
+{
+	FDebrisParticle P;
+	P.Origin = FVector(0.f, 0.f, 100.f);
+	P.Velocity = FVector(300.f, 0.f, 200.f);
+	P.Size = 10.f;
+	const FVector Late = UTemporalDebrisComponent::EvaluateChip(P, 10.f, 0.f);
+	TestEqual(TEXT("Termina apoyada en el piso"), static_cast<float>(Late.Z), 5.f, 0.01f);
+	const FVector Later = UTemporalDebrisComponent::EvaluateChip(P, 20.f, 0.f);
+	TestTrue(TEXT("Ya en el piso no se sigue deslizando"), Late.Equals(Later, 0.01f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDebrisDustScaleShape, "Entropia.Debris.DustScaleShape", EntropiaTestFlags::Flags)
+bool FEntropiaDebrisDustScaleShape::RunTest(const FString& Parameters)
+{
+	const float Life = 2.5f;
+	TestEqual(TEXT("El polvo nace de nada"), UTemporalDebrisComponent::DustScale(0.f, Life), 0.f, 0.001f);
+	TestEqual(TEXT("Y se va a nada"), UTemporalDebrisComponent::DustScale(Life, Life), 0.f, 0.001f);
+	float Peak = 0.f;
+	for (int32 i = 0; i <= 100; ++i)
+	{
+		Peak = FMath::Max(Peak, UTemporalDebrisComponent::DustScale(Life * i / 100.f, Life));
+	}
+	TestTrue(TEXT("Llega a su máximo cerca del primer cuarto de su vida"), UTemporalDebrisComponent::DustScale(Life * 0.25f, Life) > 0.9f * Peak);
 	return true;
 }
 

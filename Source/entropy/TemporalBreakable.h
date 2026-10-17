@@ -13,6 +13,7 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UPrimitiveComponent;
 class UTemporalRecorderComponent;
+class UTemporalDebrisComponent;
 
 /** Cómo se parte: en pedazos irregulares (Voronoi, como cristal) o en cubos iguales (el modo viejo). */
 UENUM(BlueprintType)
@@ -32,6 +33,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entropia")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/** Astillas y polvo que salen al romperse (reversibles). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entropia")
+	TObjectPtr<UTemporalDebrisComponent> Debris;
 
 	/** Tamaño del bloque entero (cm). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
