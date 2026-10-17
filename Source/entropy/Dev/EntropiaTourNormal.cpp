@@ -155,6 +155,58 @@ void UEntropiaTourComponent::BuildNormalSteps()
 			Powers->Locomotion->SetCrouched(false);
 		}
 	});
+	// Fase 3b · Caídas: de 6 m corriendo (rueda), de 6 m quieto (aterrizaje duro), de 12 m (duro y daño).
+	// Desde el centro de la sala 4, hacia el fondo (sin paredes cerca donde aterrizar).
+	auto DropFrom = [this, Player](float Height, float Speed)
+	{
+		ACharacter* Character = Player();
+		if (!Character || !Rooms->PhysicsLab)
+		{
+			return;
+		}
+		const FVector Spot = Rooms->PhysicsLab->GetActorTransform().TransformPosition(FVector(500.f, 300.f, 120.f));
+		Character->SetActorLocation(Spot + FVector(0.f, 0.f, Height), false, nullptr, ETeleportType::TeleportPhysics);
+		Character->SetActorRotation(FRotator(0.f, Rooms->PhysicsLab->GetActorRotation().Yaw, 0.f));
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->ResetFall();
+		}
+		Character->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+		Character->GetCharacterMovement()->Velocity = Rooms->PhysicsLab->GetActorForwardVector() * Speed;
+	};
+	auto LogLanding = [this](const TCHAR* Name)
+	{
+		const FEntropiaLandingInfo Info = Powers->Locomotion ? Powers->Locomotion->GetLastLanding() : FEntropiaLandingInfo();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s tipo=%d altura=%.0f dano=%.0f vida=%.0f"), Name, static_cast<int32>(Info.Kind),
+			Info.Height, Info.Damage, Powers->Health ? Powers->Health->Health : -1.f);
+	};
+	// Corriendo: el jugador mantiene la dirección (si no, el aire lo frena y cae quieto).
+	Add(TEXT("caida_rodando"), 2.2f, [this, DropFrom, Player]
+	{
+		DropFrom(600.f, 450.f);
+		if (Powers->Locomotion && Rooms->PhysicsLab)
+		{
+			Powers->Locomotion->SetTourInput(Rooms->PhysicsLab->GetActorForwardVector());
+		}
+	});
+	Add(TEXT("caida_dura"), 1.6f, [this, DropFrom, LogLanding]
+	{
+		LogLanding(TEXT("caida_rodando"));
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetTourInput(FVector::ZeroVector);
+		}
+		DropFrom(600.f, 0.f);
+	});
+	Add(TEXT("caida_alta"), 1.8f, [DropFrom, LogLanding] { LogLanding(TEXT("caida_dura")); DropFrom(1200.f, 0.f); });
+	Add(TEXT("caidas_revisa"), 0.3f, [this, LogLanding]
+	{
+		LogLanding(TEXT("caida_alta"));
+		if (Powers->Health)
+		{
+			Powers->Health->ResetHealth();
+		}
+	});
 	Add(TEXT("disparo"), 0.9f, [this] { Rooms->Fire(); });
 	Add(TEXT("escombros"), 1.4f, [] {});
 	Add(TEXT("invertir_bala"), 2.6f, [this, NewestBullet]

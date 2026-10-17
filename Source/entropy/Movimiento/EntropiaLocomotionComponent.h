@@ -7,10 +7,21 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "EntropiaFalls.h"
 #include "EntropiaLocomotionComponent.generated.h"
 
 class ACharacter;
 class UTemporalAimComponent;
+struct FHitResult;
+
+/** El último aterrizaje (lo lee el modo tour). */
+struct FEntropiaLandingInfo
+{
+	EEntropiaLanding Kind = EEntropiaLanding::Normal;
+	float Height = 0.f;
+	float Damage = 0.f;
+	int32 Count = 0;
+};
 class UTemporalDashComponent;
 
 UCLASS(ClassGroup = (Entropia), meta = (BlueprintSpawnableComponent, DisplayName = "Entropia Locomotion"))
@@ -35,6 +46,13 @@ public:
 	/** Media altura de la cápsula agachado (de pie: 96). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Velocidad") float CrouchedHalfHeight = 60.f;
 
+	/** Segundos que dura rodar al caer de 4 a 9 m y velocidad con la que ruedas. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Caidas") float RollSeconds = 0.55f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Caidas") float RollSpeed = 450.f;
+
+	/** Segundos sin poder moverte tras un aterrizaje duro. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Caidas") float HardLandingSeconds = 0.5f;
+
 	/** Velocidad de caminar según el estado. Apuntar gana a correr; agachado gana a todo. Lógica pura (probada). */
 	static float ComputeWalkSpeed(bool bSprint, bool bCrouch, float AimAlpha,
 		float InWalk = 450.f, float InSprint = 700.f, float InCrouch = 220.f, float InAim = 320.f);
@@ -46,6 +64,13 @@ public:
 	void ToggleCrouch();
 	void SetCrouched(bool bCrouch);
 	bool IsCrouched() const;
+
+	bool IsRolling() const { return RollTimer > 0.f; }
+	bool IsHardLanding() const { return HardTimer > 0.f; }
+	const FEntropiaLandingInfo& GetLastLanding() const { return LastLanding; }
+
+	/** Olvida la altura desde la que vienes cayendo (al teletransportarte). */
+	void ResetFall();
 
 	/** Modo tour: simula que el jugador mantiene el stick en esta dirección (cero = soltar). */
 	void SetTourInput(const FVector& WorldDirection) { TourInput = WorldDirection; }
@@ -59,12 +84,29 @@ protected:
 private:
 	ACharacter* GetCharacter() const;
 	void ApplyCrouchPose();
+	void TrackFall();
+	void StartRoll(const FVector& Direction);
+	void UpdateRoll(float DeltaTime);
+	void EndRoll();
+
+	UFUNCTION()
+	void HandleLanded(const FHitResult& Hit);
 
 	UPROPERTY()
 	TObjectPtr<UTemporalAimComponent> Aim;
 
 	UPROPERTY()
 	TObjectPtr<UTemporalDashComponent> Dash;
+
+	FEntropiaLandingInfo LastLanding;
+	float ApexZ = 0.f;
+	bool bWasFalling = false;
+	FVector LastLocation = FVector::ZeroVector;
+	float RollTimer = 0.f;
+	float HardTimer = 0.f;
+	FVector RollDirection = FVector::ForwardVector;
+	FVector MeshBaseLocation = FVector::ZeroVector;
+	FRotator MeshBaseRotation = FRotator::ZeroRotator;
 
 	bool bWantsSprint = false;
 	bool bCrouchPosePlaying = false;

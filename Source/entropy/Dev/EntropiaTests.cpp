@@ -19,6 +19,7 @@
 #include "TemporalCombat.h"
 #include "TakedownComponent.h"
 #include "EntropiaLocomotionComponent.h"
+#include "EntropiaFalls.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -610,6 +611,21 @@ bool FEntropiaLocomotionWalkSpeed::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 0.f), 220.f, 0.01f);
 	TestEqual(TEXT("Apuntar gana a correr: 320"), UEntropiaLocomotionComponent::ComputeWalkSpeed(true, false, 1.f), 320.f, 0.01f);
 	TestEqual(TEXT("Agachado apuntando sigue agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 1.f), 220.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFallOutcome, "Entropia.Fall.Outcome", EntropiaTestFlags::Flags)
+bool FEntropiaFallOutcome::RunTest(const FString& Parameters)
+{
+	float Damage = -1.f;
+	TestTrue(TEXT("3 m: normal"), EntropiaFalls::Decide(300.f, 300.f, Damage) == EEntropiaLanding::Normal);
+	TestEqual(TEXT("3 m: sin daño"), Damage, 0.f);
+	TestTrue(TEXT("6 m moviéndose: rueda"), EntropiaFalls::Decide(600.f, 300.f, Damage) == EEntropiaLanding::Roll);
+	TestEqual(TEXT("Rodando no hay daño"), Damage, 0.f);
+	TestTrue(TEXT("6 m quieto: aterrizaje duro"), EntropiaFalls::Decide(600.f, 50.f, Damage) == EEntropiaLanding::Hard);
+	TestEqual(TEXT("6 m quieto: sin daño"), Damage, 0.f);
+	TestTrue(TEXT("12 m: aterrizaje duro"), EntropiaFalls::Decide(1200.f, 600.f, Damage) == EEntropiaLanding::Hard);
+	TestEqual(TEXT("12 m: 10 por metro arriba de 9 m = 30"), Damage, 30.f, 0.01f);
 	return true;
 }
 
