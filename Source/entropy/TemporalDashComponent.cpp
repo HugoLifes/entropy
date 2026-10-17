@@ -4,6 +4,7 @@
 #include "InverseStepComponent.h"
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
+#include "TemporalHealthComponent.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
@@ -96,6 +97,11 @@ bool UTemporalDashComponent::TryDash()
 	Move->BrakingDecelerationFalling = 0.f;
 	Move->GravityScale = 0.f;
 	Move->Velocity = DashDirection * DashSpeed;
+
+	if (UTemporalHealthComponent* Health = Character->FindComponentByClass<UTemporalHealthComponent>())
+	{
+		Health->SetInvulnerable(InvulnerableSeconds);
+	}
 
 	bDashing = true;
 	DashTimer = 0.f;

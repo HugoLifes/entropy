@@ -15,6 +15,8 @@
 #include "TemporalTrailComponent.h"
 #include "TemporalDilation.h"
 #include "TemporalDashComponent.h"
+#include "TemporalHealthComponent.h"
+#include "TemporalCombat.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -486,6 +488,82 @@ bool FEntropiaDashCooldown::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Pasada la recarga, sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, false, false));
 	TestFalse(TEXT("En el aire, solo uno por salto"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, true));
 	TestTrue(TEXT("En el aire, el primero sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, false));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Vida
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthDeathOnce, "Entropia.Health.DamageAndDeathOnce", EntropiaTestFlags::Flags)
+bool FEntropiaHealthDeathOnce::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	int32 Deaths = 0;
+	Health->OnDeath.AddLambda([&Deaths]() { ++Deaths; });
+	for (int32 i = 0; i < 5; ++i)
+	{
+		TestTrue(TEXT("Cada bala de 20 hace daño"), Health->ApplyDamage(20.f));
+	}
+	TestTrue(TEXT("Con 5 balas mueres"), Health->IsDead());
+	TestEqual(TEXT("La vida no baja de 0"), Health->Health, 0.f);
+	TestFalse(TEXT("Muerto ya no recibe daño"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("Mueres una sola vez"), Deaths, 1);
+	Health->ResetHealth();
+	TestFalse(TEXT("Al reaparecer estás vivo"), Health->IsDead());
+	TestEqual(TEXT("Y con la vida llena"), Health->Health, 100.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthRegen, "Entropia.Health.RegenAfterDelay", EntropiaTestFlags::Flags)
+bool FEntropiaHealthRegen::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	Health->ApplyDamage(40.f);
+	Health->Advance(3.9f);
+	TestEqual(TEXT("Antes de 4 s sin daño no se recupera"), Health->Health, 60.f, 0.01f);
+	Health->Advance(1.f);
+	TestEqual(TEXT("Después se recupera a 25/s (0.9 s → +22.5)"), Health->Health, 82.5f, 0.01f);
+	Health->Advance(10.f);
+	TestEqual(TEXT("Nunca pasa de 100"), Health->Health, 100.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthInvulnerable, "Entropia.Health.InvulnerableBlocksDamage", EntropiaTestFlags::Flags)
+bool FEntropiaHealthInvulnerable::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	Health->SetInvulnerable(0.25f);
+	TestFalse(TEXT("Durante el dash la bala no hace daño"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("La vida sigue llena"), Health->Health, 100.f);
+	Health->Advance(0.3f);
+	TestTrue(TEXT("Pasado el instante, sí"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("Queda en 80"), Health->Health, 80.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Bala contra cápsula (pegar y esquiva perfecta)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCombatSegmentCapsule, "Entropia.Combat.SegmentHitsCapsule", EntropiaTestFlags::Flags)
+bool FEntropiaCombatSegmentCapsule::RunTest(const FString& Parameters)
+{
+	// Cápsula del jugador: 96 de media altura, 42 de radio, en el origen.
+	float Fraction = -1.f;
+	TestTrue(TEXT("De frente pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 0.f), FVector(500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestEqual(TEXT("Pega al llegar al borde (458 de 1000)"), Fraction, 0.458f, 0.002f);
+	TestFalse(TEXT("A 1 m de lado no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 100.f, 0.f), FVector(500.f, 100.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestFalse(TEXT("Por encima de la cabeza no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 200.f), FVector(500.f, 0.f, 200.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestFalse(TEXT("Si se queda corta no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 0.f), FVector(-100.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCombatTimeToHit, "Entropia.Combat.TimeToHitCapsule", EntropiaTestFlags::Flags)
+bool FEntropiaCombatTimeToHit::RunTest(const FString& Parameters)
+{
+	const float T = TemporalCombat::TimeToHitCapsule(FVector(-500.f, 0.f, 0.f), FVector(2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f);
+	TestEqual(TEXT("A 5 m y 25 m/s pega en ~0.183 s"), T, 0.1832f, 0.002f);
+	TestEqual(TEXT("Alejándose no pega"), TemporalCombat::TimeToHitCapsule(FVector(-500.f, 0.f, 0.f), FVector(-2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
+	TestEqual(TEXT("Si tarda más que la ventana, no cuenta"), TemporalCombat::TimeToHitCapsule(FVector(-2000.f, 0.f, 0.f), FVector(2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
 	return true;
 }
 

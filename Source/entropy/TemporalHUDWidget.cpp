@@ -4,6 +4,7 @@
 #include "TemporalEnergyComponent.h"
 #include "TemporalAimComponent.h"
 #include "TemporalDilation.h"
+#include "TemporalHealthComponent.h"
 
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -69,6 +70,27 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 	FSlateDrawElement::MakeText(OutDrawElements, LayerId + 2,
 		AllottedGeometry.ToPaintGeometry(FVector2D(BarWidth, 16.f), FSlateLayoutTransform(BarPos - FVector2D(0.f, 18.f))),
 		FString(TEXT("ENERGÍA")), Font, ESlateDrawEffect::None, FLinearColor(1.f, 1.f, 1.f, 0.85f));
+
+	// Vida: barra roja encima de la de energía; parpadea clara al recibir daño.
+	if (const UTemporalHealthComponent* HealthComp = Health.Get())
+	{
+		const FVector2D HealthPos = BarPos - FVector2D(0.f, 42.f);
+		const float HealthHeight = 10.f;
+		FSlateDrawElement::MakeBox(OutDrawElements, LayerId + 1,
+			AllottedGeometry.ToPaintGeometry(FVector2D(BarWidth + 4.f, HealthHeight + 4.f), FSlateLayoutTransform(HealthPos - FVector2D(2.f, 2.f))),
+			White, ESlateDrawEffect::None, FLinearColor(0.f, 0.f, 0.f, 0.55f));
+		const float HealthFill = FMath::Clamp(HealthComp->GetFraction(), 0.f, 1.f);
+		const FLinearColor HealthColor = HealthComp->GetHurtFlash() > 0.f ? FLinearColor(1.f, 0.75f, 0.7f) : FLinearColor(0.9f, 0.15f, 0.12f);
+		if (HealthFill > 0.f)
+		{
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId + 2,
+				AllottedGeometry.ToPaintGeometry(FVector2D(BarWidth * HealthFill, HealthHeight), FSlateLayoutTransform(HealthPos)),
+				White, ESlateDrawEffect::None, HealthColor);
+		}
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 2,
+			AllottedGeometry.ToPaintGeometry(FVector2D(BarWidth, 16.f), FSlateLayoutTransform(HealthPos - FVector2D(0.f, 18.f))),
+			FString(TEXT("VIDA")), Font, ESlateDrawEffect::None, FLinearColor(1.f, 1.f, 1.f, 0.85f));
+	}
 
 	return LayerId + 3;
 }

@@ -32,6 +32,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0"))
 	float Cooldown = 0.6f;
 
+	/** Segundos en que las balas te atraviesan al empezar el dash. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0"))
+	float InvulnerableSeconds = 0.25f;
+
 	/** Segundos entre cada copia de la estela durante el dash. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
 	float TrailInterval = 0.05f;

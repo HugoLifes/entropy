@@ -11,6 +11,7 @@
 #include "TemporalAimComponent.h"
 #include "TimeStopComponent.h"
 #include "TemporalDashComponent.h"
+#include "TemporalHealthComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -104,6 +105,7 @@ void ATemporalSandbox::Setup()
 
 		// La energía va primero: todos los poderes la buscan al empezar.
 		PlayerEnergy = TemporalFX::FindOrAddComponent<UTemporalEnergyComponent>(Pawn, TEXT("PlayerTemporalEnergy"));
+		PlayerHealth = TemporalFX::FindOrAddComponent<UTemporalHealthComponent>(Pawn, TEXT("PlayerHealth"));
 
 		PlayerInverseStep = Pawn->FindComponentByClass<UInverseStepComponent>();
 		if (!PlayerInverseStep)
@@ -127,6 +129,7 @@ void ATemporalSandbox::Setup()
 			{
 				EnergyHUD->SetEnergy(PlayerEnergy);
 				EnergyHUD->SetAim(PlayerAim);
+				EnergyHUD->SetHealth(PlayerHealth);
 				EnergyHUD->AddToViewport();
 			}
 		}

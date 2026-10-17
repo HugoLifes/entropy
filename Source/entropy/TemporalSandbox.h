@@ -35,6 +35,7 @@ class UOverdriveComponent;
 class UTemporalAimComponent;
 class UTimeStopComponent;
 class UTemporalDashComponent;
+class UTemporalHealthComponent;
 
 /** Un paso del modo tour: qué hacer y cuánto esperar (segundos reales). */
 struct FEntropiaTourStep
@@ -190,6 +191,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UTemporalDashComponent> PlayerDash;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalHealthComponent> PlayerHealth;
 
 	/** La R actual se pulsó con Ctrl (rebobinar todo) y no como Invertir objeto. */
 	bool bRewindingAll = false;
