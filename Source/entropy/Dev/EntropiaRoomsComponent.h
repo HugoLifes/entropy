@@ -12,6 +12,7 @@
 class ATemporalPhysicsLab;
 class ATemporalReflexRoom;
 class ATemporalParkourRoom;
+class ATemporalCombatRoom;
 class ATemporalTestChamber;
 class UEntropiaPlayerPowers;
 
@@ -59,6 +60,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	FVector ParkourRoomOffset = FVector(0.f, 7000.f, 3000.f);
 
+	/** Crea la sala 7 · Combate (dummies armados y cobertura). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnCombatRoom = true;
+
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector CombatRoomOffset = FVector(0.f, -7000.f, 3000.f);
+
 	/** Empezar el Play dentro de la sala 1. */
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	bool bStartInChamber = true;
@@ -73,10 +81,10 @@ public:
 	/** Crea todo. Recuerda dónde empezó el jugador (tecla 0). */
 	void BuildAll(UEntropiaPlayerPowers* InPowers);
 
-	/** 0 = inicio (las cajas) · 1, 2, 3 = salas del cuarto de pruebas · 4 = Física · 5 = Reflejos · 6 = Parkour. */
+	/** 0 = inicio (las cajas) · 1, 2, 3 = salas del cuarto de pruebas · 4 = Física · 5 = Reflejos · 6 = Parkour · 7 = Combate. */
 	void GoToRoom(int32 Key);
 
-	/** Después de morir: a la entrada de la sala 5 (o al inicio si no hay). */
+	/** Después de morir: a la entrada de la sala donde estabas (la última a la que fuiste). */
 	void RespawnPlayer();
 
 	/** T: vuelve a soltar las cajas. */
@@ -95,6 +103,7 @@ public:
 	UPROPERTY() TObjectPtr<ATemporalPhysicsLab> PhysicsLab;
 	UPROPERTY() TObjectPtr<ATemporalReflexRoom> ReflexRoom;
 	UPROPERTY() TObjectPtr<ATemporalParkourRoom> ParkourRoom;
+	UPROPERTY() TObjectPtr<ATemporalCombatRoom> CombatRoom;
 
 private:
 	void BackToStart();
@@ -104,4 +113,7 @@ private:
 	TObjectPtr<UEntropiaPlayerPowers> Powers;
 
 	FVector PlayerStartLocation = FVector::ZeroVector;
+
+	/** La última sala a la que fuiste (para reaparecer ahí). */
+	int32 LastRoom = 1;
 };

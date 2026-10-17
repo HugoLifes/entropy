@@ -5,6 +5,7 @@
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalSubsystem.h"
+#include "EntropiaAnimationSet.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -85,6 +86,26 @@ void ATemporalMannequin::ReceiveTakedown(const FVector& Direction, float Impulse
 		return;
 	}
 	KnockDown(Direction, Impulse);
+}
+
+void ATemporalMannequin::ReceiveHit(const FVector& Direction, bool bKnockdown)
+{
+	if (bKnockedDown || bPendingHit)
+	{
+		return;
+	}
+	if (bKnockdown)
+	{
+		ReceiveTakedown(Direction, 700.f);
+		return;
+	}
+	StaggerTime = StaggerSeconds;
+	LaunchCharacter(FVector(Direction.X, Direction.Y, 0.f).GetSafeNormal() * 250.f, true, false);
+	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+	{
+		EntropiaAnim::Play(this, Set->VictimHit);
+	}
+	TemporalFX::Burst(this, GetActorLocation() + FVector(0.f, 0.f, 50.f), FLinearColor(1.f, 0.75f, 0.5f), 0.3f);
 }
 
 void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
@@ -171,6 +192,7 @@ void ATemporalMannequin::SetRagdollFrozen(bool bFrozen)
 void ATemporalMannequin::ResetMannequin()
 {
 	bPendingHit = false;
+	StaggerTime = 0.f;
 	if (bKnockedDown)
 	{
 		Recover(false);
@@ -184,6 +206,7 @@ void ATemporalMannequin::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// DeltaTime ya trae su tiempo propio: congelado vale 0 (no gira, no se levanta).
+	StaggerTime = FMath::Max(0.f, StaggerTime - DeltaTime);
 	if (bPendingHit)
 	{
 		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);

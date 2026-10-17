@@ -22,6 +22,7 @@
 #include "EntropiaFalls.h"
 #include "EntropiaParkour.h"
 #include "EntropiaCoverComponent.h"
+#include "TemporalArmedDummy.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -707,6 +708,30 @@ bool FEntropiaCoverKind::RunTest(const FString& Parameters)
 	TestTrue(TEXT("90 cm: cobertura baja (agachado)"), EntropiaCover::KindForHeight(90.f) == EEntropiaCover::Low);
 	TestTrue(TEXT("150 cm: todavía baja"), EntropiaCover::KindForHeight(150.f) == EEntropiaCover::Low);
 	TestTrue(TEXT("200 cm: cobertura alta (de pie)"), EntropiaCover::KindForHeight(200.f) == EEntropiaCover::High);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Dummy armado
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaArmedDummyRoutine, "Entropia.ArmedDummy.Routine", EntropiaTestFlags::Flags)
+bool FEntropiaArmedDummyRoutine::RunTest(const FString& Parameters)
+{
+	using EStep = FArmedDummyRoutine::EStep;
+	FArmedDummyRoutine R;
+	TestEqual(TEXT("Congelado (Dt 0) no avanza"), R.Advance(0.f), 0);
+	TestTrue(TEXT("Sigue cubierto"), R.Step == EStep::Covered);
+	TestEqual(TEXT("2.4 s cubierto: nada"), R.Advance(2.4f), 0);
+	TestEqual(TEXT("Pasa de 2.5 s: se asoma (sin disparar aún)"), R.Advance(0.2f), 0);
+	TestTrue(TEXT("Asomándose"), R.Step == EStep::Stepping);
+	TestEqual(TEXT("Ya afuera: primer disparo"), R.Advance(0.25f), 1);
+	TestTrue(TEXT("Disparando"), R.Step == EStep::Firing);
+	TestEqual(TEXT("0.35 s después: segundo disparo"), R.Advance(0.35f), 1);
+	TestEqual(TEXT("No hay tercero"), R.Advance(0.3f), 0);
+	TestTrue(TEXT("Regresa a cubrirse"), R.Step == EStep::Returning);
+	R.Advance(0.3f);
+	TestTrue(TEXT("Cubierto otra vez"), R.Step == EStep::Covered);
+	TestEqual(TEXT("Recién puesto (cubierto): nada afuera"), FArmedDummyRoutine().StepAlpha(), 0.f);
 	return true;
 }
 

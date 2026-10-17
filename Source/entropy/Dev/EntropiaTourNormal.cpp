@@ -4,6 +4,8 @@
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
+#include "TemporalCombatRoom.h"
+#include "TemporalArmedDummy.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
@@ -664,6 +666,30 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		if (Powers->Cover) { Powers->Cover->Exit(); }
 	});
 	Add(TEXT("salir_revisa"), 0.3f, [LogCover] { LogCover(TEXT("salir_cobertura")); });
+	// Fase 3b · Sala 7: dummies armados que se asoman y disparan (protegido por la barda baja).
+	auto DummyShots = [this]()
+	{
+		int32 Total = 0;
+		if (Rooms->CombatRoom)
+		{
+			for (const ATemporalArmedDummy* Dummy : Rooms->CombatRoom->GetDummies())
+			{
+				Total += Dummy ? Dummy->GetTotalShots() : 0;
+			}
+		}
+		return Total;
+	};
+	Add(TEXT("sala7"), 1.5f, [this] { Rooms->GoToRoom(7); if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); } });
+	Add(TEXT("dummy_dispara"), 4.5f, [this, DummyShots]
+	{
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->PlacePlayer(FVector(900.f, 0.f, 98.f)); }
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala7 disparos_antes=%d"), DummyShots());
+	});
+	Add(TEXT("dummy_dispara_revisa"), 0.3f, [this, DummyShots]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dummies_dispararon=%d"), DummyShots() > 0 ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		Rooms->GoToRoom(2);

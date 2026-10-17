@@ -39,11 +39,20 @@ public:
 	/** Recibe un remate. Si está congelado, el golpe espera a que vuelva su tiempo. */
 	void ReceiveTakedown(const FVector& Direction, float Impulse);
 
+	/** Un golpe normal: lo empuja y lo aturde un momento (bKnockdown: lo tumba como el remate). */
+	virtual void ReceiveHit(const FVector& Direction, bool bKnockdown);
+
+	/** Aturdido por un golpe (no hace nada durante unos instantes de su tiempo). */
+	bool IsStaggered() const { return StaggerTime > 0.f; }
+
+	/** Ocupado reaccionando: tirado, con golpe pendiente o aturdido. */
+	bool IsReacting() const { return bKnockedDown || bPendingHit || StaggerTime > 0.f; }
+
 	bool IsKnockedDown() const { return bKnockedDown; }
 	bool HasPendingHit() const { return bPendingHit; }
 
 	/** De pie en su lugar, sin golpes pendientes (al reiniciar la sala). */
-	void ResetMannequin();
+	virtual void ResetMannequin();
 
 	virtual void Tick(float DeltaTime) override;
 
@@ -51,8 +60,15 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-private:
 	void KnockDown(const FVector& Direction, float Impulse);
+
+	/** Segundos (de su tiempo) que aguanta aturdido tras un golpe. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
+	float StaggerSeconds = 0.6f;
+
+	float StaggerTime = 0.f;
+
+private:
 	void Recover(bool bWithEffect);
 	/** Congela o suelta el muñeco de trapo (la física del cuerpo no respeta CustomTimeDilation). */
 	void SetRagdollFrozen(bool bFrozen);
