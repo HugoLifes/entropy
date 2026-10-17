@@ -36,6 +36,12 @@ namespace TemporalFracture
 	ENTROPY_API float CellVolume(const FFractureCell& Cell);
 	ENTROPY_API FVector CellCentroid(const FFractureCell& Cell);
 
+	/** Normal de la cara hacia afuera (método de Newell: robusto con puntos casi alineados). */
+	ENTROPY_API FVector FaceNormal(const FFracturePolygon& Face);
+
+	/** Triángulos en abanico de una cara con NumPoints puntos (desde Base), con la cara visible hacia afuera en Unreal. */
+	ENTROPY_API void AppendFanTriangles(int32 Base, int32 NumPoints, TArray<int32>& OutTriangles);
+
 	/** Vértices sin repetir (sirven para la colisión convexa). */
 	ENTROPY_API TArray<FVector> CellVertices(const FFractureCell& Cell);
 }

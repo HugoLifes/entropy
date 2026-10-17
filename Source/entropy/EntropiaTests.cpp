@@ -324,4 +324,52 @@ bool FEntropiaTrailSkipsWhenStill::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Revisión final Fase 2: los pedazos se dibujan con la cara hacia afuera
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFractureTrianglesFaceOut, "Entropia.Fracture.TrianglesFaceOutward", EntropiaTestFlags::Flags)
+bool FEntropiaFractureTrianglesFaceOut::RunTest(const FString& Parameters)
+{
+	const FVector Half(20.f, 250.f, 150.f);
+	const TArray<FFractureCell> Cells = TemporalFracture::VoronoiFracture(Half, TemporalFracture::MakeSeeds(Half, 8, FVector(0.f, 100.f, 50.f), 3));
+	int32 Inward = 0;
+	int32 Checked = 0;
+	for (const FFractureCell& Cell : Cells)
+	{
+		const FVector Centroid = TemporalFracture::CellCentroid(Cell);
+		for (const FFracturePolygon& Face : Cell.Faces)
+		{
+			FVector FaceCenter = FVector::ZeroVector;
+			for (const FVector& P : Face.Points)
+			{
+				FaceCenter += P;
+			}
+			FaceCenter /= Face.Points.Num();
+			const FVector Out = FaceCenter - Centroid;
+
+			if (FVector::DotProduct(TemporalFracture::FaceNormal(Face), Out) <= 0.f)
+			{
+				++Inward;
+			}
+			TArray<int32> Triangles;
+			TemporalFracture::AppendFanTriangles(0, Face.Points.Num(), Triangles);
+			for (int32 t = 0; t + 2 < Triangles.Num(); t += 3)
+			{
+				const FVector& A = Face.Points[Triangles[t]];
+				const FVector& B = Face.Points[Triangles[t + 1]];
+				const FVector& C = Face.Points[Triangles[t + 2]];
+				// Convención de Unreal (mano izquierda): la cara visible de (A, B, C) apunta a (C − A) × (B − A).
+				if (FVector::DotProduct(FVector::CrossProduct(C - A, B - A), Out) <= 0.f)
+				{
+					++Inward;
+				}
+				++Checked;
+			}
+		}
+	}
+	TestTrue(TEXT("Hay triángulos que revisar"), Checked > 0);
+	TestEqual(TEXT("Ningún triángulo ni normal mira hacia adentro"), Inward, 0);
+	return true;
+}
+
 #endif

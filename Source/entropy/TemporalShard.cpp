@@ -34,20 +34,15 @@ void ATemporalShard::Build(const FFractureCell& Cell, const FVector& CellCentroi
 			continue;
 		}
 		const int32 Section = Face.bInterior ? 1 : 0;
-		const FVector Normal = FVector::CrossProduct(Face.Points[1] - Face.Points[0], Face.Points[2] - Face.Points[0]).GetSafeNormal();
+		const FVector Normal = TemporalFracture::FaceNormal(Face);
 		const int32 Base = Vertices[Section].Num();
 		for (const FVector& P : Face.Points)
 		{
 			Vertices[Section].Add((P - CellCentroid) * Shrink);
 			Normals[Section].Add(Normal);
 		}
-		// Abanico desde el primer punto (la cara es convexa).
-		for (int32 i = 1; i + 1 < Face.Points.Num(); ++i)
-		{
-			Triangles[Section].Add(Base);
-			Triangles[Section].Add(Base + i);
-			Triangles[Section].Add(Base + i + 1);
-		}
+		// Abanico desde el primer punto (la cara es convexa), con la cara visible hacia afuera.
+		TemporalFracture::AppendFanTriangles(Base, Face.Points.Num(), Triangles[Section]);
 	}
 
 	const TArray<FVector2D> NoUV;

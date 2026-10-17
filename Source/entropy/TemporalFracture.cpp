@@ -285,3 +285,20 @@ TArray<FVector> TemporalFracture::CellVertices(const FFractureCell& Cell)
 	}
 	return Vertices;
 }
+
+FVector TemporalFracture::FaceNormal(const FFracturePolygon& Face)
+{
+	return EntropiaFracture::PolygonNormal(Face.Points);
+}
+
+void TemporalFracture::AppendFanTriangles(int32 Base, int32 NumPoints, TArray<int32>& OutTriangles)
+{
+	// Unreal es de mano izquierda: la cara visible de (A, B, C) apunta a (C − A) × (B − A).
+	// Nuestras caras van en sentido antihorario alrededor de su normal hacia afuera, así que invertimos el orden.
+	for (int32 i = 1; i + 1 < NumPoints; ++i)
+	{
+		OutTriangles.Add(Base);
+		OutTriangles.Add(Base + i + 1);
+		OutTriangles.Add(Base + i);
+	}
+}
