@@ -14,6 +14,7 @@
 #include "TemporalHealthComponent.h"
 #include "TemporalReflexRoom.h"
 #include "TemporalDilation.h"
+#include "SlowEyeComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -123,6 +124,7 @@ void ATemporalSandbox::Setup()
 		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		PlayerTimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("PlayerTimeStop"));
 		PlayerDash = TemporalFX::FindOrAddComponent<UTemporalDashComponent>(Pawn, TEXT("PlayerDash"));
+		PlayerSlowEye = TemporalFX::FindOrAddComponent<USlowEyeComponent>(Pawn, TEXT("PlayerSlowEye"));
 		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
 		// Barra de energía en pantalla.
@@ -791,29 +793,44 @@ void ATemporalSandbox::StartTour()
 			return;
 		}
 		const FVector Forward = Character->GetActorForwardVector();
-		const FVector From = Character->GetActorLocation() + Forward * 400.f + FVector(0.f, 0.f, 20.f);
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		if (ATemporalProjectile* Bullet = GetWorld()->SpawnActor<ATemporalProjectile>(ATemporalProjectile::StaticClass(), From, FRotator::ZeroRotator, Params))
-		{
-			Bullet->Speed = 1800.f;
-			Bullet->bHurtsPlayer = true;
-			Bullet->Launch(From, -Forward, nullptr);
-			TourTemp = Bullet;
-		}
+		SpawnTourBullet(Character->GetActorLocation() + Forward * 400.f + FVector(0.f, 0.f, 20.f), -Forward);
 		const float Before = PlayerHealth ? PlayerHealth->Health : -1.f;
 		const bool bDash = PlayerDash && PlayerDash->TryDash();
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR esquiva dash=%d reflex=%d vida=%.0f"), bDash ? 1 : 0, PlayerDash && PlayerDash->IsReflexActive() ? 1 : 0, Before);
 	});
 	Add(TEXT("despues_del_reflejo"), 1.f, [this]
 	{
-		if (TourTemp.IsValid())
-		{
-			TourTemp->Destroy();
-		}
+		ClearTourTemps();
 		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR despues_del_reflejo vida=%.0f global=%.2f"), PlayerHealth ? PlayerHealth->Health : -1.f, Dilation ? Dilation->GetGlobalDilation() : -1.f);
 	});
+	// Fase 3 · Ojo lento: apuntando, dos balas pasan a tu lado y se frenan al entrar a 3.5 m.
+	Add(TEXT("ojo_lento"), 1.f, [this, Player]
+	{
+		ACharacter* Character = Player();
+		if (!Character)
+		{
+			return;
+		}
+		if (PlayerAim)
+		{
+			PlayerAim->SetAiming(true);
+		}
+		const FVector Forward = Character->GetActorForwardVector();
+		const FVector Right = Character->GetActorRightVector();
+		const FVector Chest = Character->GetActorLocation() + FVector(0.f, 0.f, 20.f);
+		SpawnTourBullet(Chest + Forward * 600.f + Right * 90.f, -Forward);
+		SpawnTourBullet(Chest + Forward * 700.f - Right * 110.f, -Forward);
+	});
+	Add(TEXT("ojo_lento_revisa"), 1.2f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_lento frenadas=%d vida=%.0f"), PlayerSlowEye ? PlayerSlowEye->NumSlowed() : -1, PlayerHealth ? PlayerHealth->Health : -1.f);
+		if (PlayerAim)
+		{
+			PlayerAim->SetAiming(false);
+		}
+	});
+	Add(TEXT("ojo_lento_fin"), 0.5f, [this] { ClearTourTemps(); });
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		GoToRoom(1);
@@ -865,6 +882,33 @@ void ATemporalSandbox::StartTour()
 	TourIndex = 0;
 	SetActorTickEnabled(true);
 	BeginTourStep();
+}
+
+ATemporalProjectile* ATemporalSandbox::SpawnTourBullet(const FVector& From, const FVector& Direction)
+{
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ATemporalProjectile* Bullet = GetWorld()->SpawnActor<ATemporalProjectile>(ATemporalProjectile::StaticClass(), From, FRotator::ZeroRotator, Params);
+	if (Bullet)
+	{
+		Bullet->Speed = 1800.f;
+		Bullet->bHurtsPlayer = true;
+		Bullet->Launch(From, Direction, nullptr);
+		TourTemps.Add(Bullet);
+	}
+	return Bullet;
+}
+
+void ATemporalSandbox::ClearTourTemps()
+{
+	for (const TWeakObjectPtr<AActor>& Temp : TourTemps)
+	{
+		if (Temp.IsValid())
+		{
+			Temp->Destroy();
+		}
+	}
+	TourTemps.Reset();
 }
 
 void ATemporalSandbox::BeginTourStep()
@@ -1142,6 +1186,34 @@ void ATemporalSandbox::BuildChaosSteps()
 		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR todo_lento global=%.2f jugador=%.2f"),
 			Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
+	});
+	// Fase 3 · Ojo lento + burbuja: al dejar de apuntar, las balas siguen congeladas por la burbuja (gana la más lenta).
+	Add(TEXT("ojo_lento_y_burbuja"), 0.3f, [this, Player]
+	{
+		ACharacter* Character = Player();
+		if (!Character)
+		{
+			return;
+		}
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		if (PlayerAim) { PlayerAim->SetAiming(true); }
+		const FVector Forward = Character->GetActorForwardVector();
+		const FVector Right = Character->GetActorRightVector();
+		const FVector Chest = Character->GetActorLocation() + FVector(0.f, 0.f, 20.f);
+		SpawnTourBullet(Chest + Forward * 250.f - Right * 150.f, Right);
+		SpawnTourBullet(Chest + Forward * 300.f - Right * 200.f, Right);
+	});
+	Add(TEXT("ojo_lento_burbuja"), 0.6f, [this] { OnBubble(); });
+	Add(TEXT("ojo_lento_suelta"), 0.6f, [this] { if (PlayerAim) { PlayerAim->SetAiming(false); } });
+	Add(TEXT("ojo_lento_revisa_burbuja"), 0.5f, [this]
+	{
+		float Fastest = -1.f;
+		for (const TWeakObjectPtr<AActor>& Temp : TourTemps)
+		{
+			if (Temp.IsValid()) { Fastest = FMath::Max(Fastest, Temp->CustomTimeDilation); }
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_lento_burbuja bala_mas_rapida=%.2f (0 = sigue congelada)"), Fastest);
+		ClearTourTemps();
 	});
 	// Fase 3 · Morir a media acción: F, R, Sobremarcha, apuntar y dash a la vez.
 	Add(TEXT("sala5_caos"), 1.f, [this] { OnRoom5(); });

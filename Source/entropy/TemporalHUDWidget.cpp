@@ -22,6 +22,7 @@ namespace EntropiaHUD
 		if (Power == TEXT("Inversion")) { return FLinearColor(1.f, 0.65f, 0.15f); }
 		if (Power == TEXT("Sobremarcha")) { return FLinearColor(0.2f, 0.9f, 0.8f); }
 		if (Power == TEXT("Detener")) { return FLinearColor(0.6f, 0.92f, 1.f); }
+		if (Power == TEXT("OjoLento")) { return FLinearColor(0.75f, 0.6f, 1.f); }
 		return FLinearColor(0.9f, 0.9f, 0.9f);
 	}
 }
