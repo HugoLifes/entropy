@@ -24,6 +24,7 @@
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionSceneTexture.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
+#include "Materials/MaterialExpressionWorldPosition.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #endif
@@ -44,6 +45,10 @@ namespace
 	// (sin ese permiso el motor dibujaba el polvo con el material gris por defecto: bolas sólidas).
 	const TCHAR* DustPackage = TEXT("/Game/Entropia/Materiales/M_TemporalDust");
 	const TCHAR* DustObject = TEXT("/Game/Entropia/Materiales/M_TemporalDust.M_TemporalDust");
+
+	// Esfera de la burbuja: borde brillante (Fresnel) y centro casi transparente, visible desde adentro y desde afuera.
+	const TCHAR* FieldPackage = TEXT("/Game/Entropia/Materiales/M_TemporalField");
+	const TCHAR* FieldObject = TEXT("/Game/Entropia/Materiales/M_TemporalField.M_TemporalField");
 
 #if WITH_EDITOR
 	/** Compila, registra y guarda en disco un material recién creado. */
@@ -150,7 +155,25 @@ float2 UvB = ClampSceneTextureUV(ViewportUVToSceneTextureUV(ViewUV + Off * (1.0 
 float R = SceneTextureLookup(UvR, 14, true).r;
 float G = SceneTextureLookup(UvG, 14, true).g;
 float B = SceneTextureLookup(UvB, 14, true).b;
-return float3(R, G, B) + Dummy.rgb * 0.0;
+float3 Col = float3(R, G, B);
+// Campos de tiempo detenido: lo que está DENTRO de la esfera (posición real del píxel) se ve desaturado y frío,
+// con un leve brillo en la superficie de la esfera.
+float4 Fld[2] = { FieldA, FieldB };
+float FStr[2] = { FieldStrength.x, FieldStrength.y };
+for (int f = 0; f < 2; ++f)
+{
+	if (Fld[f].w > 1.0 && FStr[f] > 0.001)
+	{
+		float Dist = distance(WorldPos, Fld[f].xyz);
+		float Inside = 1.0 - smoothstep(Fld[f].w * 0.96, Fld[f].w, Dist);
+		float Lum = dot(Col, float3(0.3, 0.59, 0.11));
+		float3 Frozen = lerp(float3(Lum, Lum, Lum), FieldTint.rgb * Lum * 1.5, 0.45);
+		Col = lerp(Col, Frozen, Inside * FStr[f] * FieldTint.a);
+		float Shell = 1.0 - saturate(abs(Dist - Fld[f].w) / (Fld[f].w * 0.035));
+		Col += FieldTint.rgb * Shell * 0.18 * FStr[f];
+	}
+}
+return Col + Dummy.rgb * 0.0;
 )HLSL");
 
 		auto AddVector = [Material](const TCHAR* Name)
@@ -164,7 +187,8 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		};
 
 		Custom->Inputs.Reset();
-		const TCHAR* VectorInputs[] = { TEXT("Pulse0"), TEXT("Pulse1"), TEXT("Pulse2"), TEXT("Pulse3"), TEXT("Aura") };
+		const TCHAR* VectorInputs[] = { TEXT("Pulse0"), TEXT("Pulse1"), TEXT("Pulse2"), TEXT("Pulse3"), TEXT("Aura"),
+			TEXT("FieldA"), TEXT("FieldB"), TEXT("FieldStrength") };
 		for (const TCHAR* Name : VectorInputs)
 		{
 			FCustomInput Input;
@@ -198,6 +222,23 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 			Input.Input.Connect(0, Param);
 			Custom->Inputs.Add(Input);
 		}
+
+		// Color del "congelado" (RGB) y cuánto se nota (A).
+		UMaterialExpressionVectorParameter* Tint = AddVector(TEXT("FieldTint"));
+		Tint->DefaultValue = FLinearColor(0.55f, 0.85f, 1.f, 0.85f);
+		FCustomInput TintInput;
+		TintInput.InputName = TEXT("FieldTint");
+		TintInput.Input.Connect(5, Tint);
+		Custom->Inputs.Add(TintInput);
+
+		// Posición del mundo del píxel (sale de la profundidad): para saber qué está dentro de cada burbuja.
+		UMaterialExpressionWorldPosition* World = NewObject<UMaterialExpressionWorldPosition>(Material);
+		World->Material = Material;
+		Material->GetExpressionCollection().AddExpression(World);
+		FCustomInput WorldInput;
+		WorldInput.InputName = TEXT("WorldPos");
+		WorldInput.Input.Connect(0, World);
+		Custom->Inputs.Add(WorldInput);
 
 		// Un SceneTexture(PostProcessInput0) conectado para que la imagen quede ligada al material (SceneTextureLookup la lee).
 		UMaterialExpressionSceneTexture* Scene = NewObject<UMaterialExpressionSceneTexture>(Material);
@@ -255,6 +296,43 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		SaveNewMaterial(Package, Material, DustPackage);
 	}
 
+	/** Crea M_TemporalField: unlit, translúcido, dos caras; opacidad = Color.A × Fresnel (borde brillante, centro claro). */
+	void CreateFieldMaterialIfMissing()
+	{
+		if (FPackageName::DoesPackageExist(FieldPackage))
+		{
+			return;
+		}
+
+		UPackage* Package = CreatePackage(FieldPackage);
+		UMaterial* Material = NewObject<UMaterial>(Package, TEXT("M_TemporalField"), RF_Public | RF_Standalone);
+		Material->BlendMode = BLEND_Translucent;
+		Material->SetShadingModel(MSM_Unlit);
+		Material->TwoSided = true;
+
+		UMaterialExpressionVectorParameter* ColorParam = NewObject<UMaterialExpressionVectorParameter>(Material);
+		ColorParam->Material = Material;
+		ColorParam->ParameterName = TEXT("Color");
+		ColorParam->DefaultValue = FLinearColor(0.3f, 0.85f, 1.f, 0.5f);
+		Material->GetExpressionCollection().AddExpression(ColorParam);
+
+		UMaterialExpressionFresnel* Fresnel = NewObject<UMaterialExpressionFresnel>(Material);
+		Fresnel->Material = Material;
+		Fresnel->Exponent = 3.f;
+		Fresnel->BaseReflectFraction = 0.06f;
+		Material->GetExpressionCollection().AddExpression(Fresnel);
+
+		UMaterialExpressionMultiply* Alpha = NewObject<UMaterialExpressionMultiply>(Material);
+		Alpha->Material = Material;
+		Alpha->A.Connect(4, ColorParam);
+		Alpha->B.Connect(0, Fresnel);
+		Material->GetExpressionCollection().AddExpression(Alpha);
+
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, ColorParam);
+		Material->GetEditorOnlyData()->Opacity.Connect(0, Alpha);
+		SaveNewMaterial(Package, Material, FieldPackage);
+	}
+
 	// Corre una vez al terminar de arrancar el motor con el editor (también con -game desde el editor, para el tour).
 	FDelayedAutoRegisterHelper GCreateEntropiaMaterials(EDelayedRegisterRunPhase::EndOfEngineInit, []
 	{
@@ -265,6 +343,7 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		CreateGhostMaterialIfMissing();
 		CreateDistortionMaterialIfMissing();
 		CreateDustMaterialIfMissing();
+		CreateFieldMaterialIfMissing();
 	});
 #endif
 
@@ -312,6 +391,22 @@ UMaterialInterface* TemporalFX::DistortionMaterial()
 		Cached = LoadObject<UMaterialInterface>(nullptr, DistortionObject, nullptr, LOAD_NoWarn);
 	}
 	return Cached.Get();
+}
+
+UMaterialInstanceDynamic* TemporalFX::MakeField(UObject* Outer, const FLinearColor& Color)
+{
+	static TWeakObjectPtr<UMaterialInterface> Cached;
+	if (!Cached.IsValid())
+	{
+		Cached = LoadObject<UMaterialInterface>(nullptr, FieldObject, nullptr, LOAD_NoWarn);
+	}
+	if (!Cached.IsValid())
+	{
+		return MakeTranslucent(Outer, Color);
+	}
+	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Cached.Get(), Outer);
+	Material->SetVectorParameterValue(TEXT("Color"), Color);
+	return Material;
 }
 
 UMaterialInstanceDynamic* TemporalFX::MakeDust(UObject* Outer, const FLinearColor& Color)

@@ -173,7 +173,7 @@ void ATemporalPhysicsLab::ShowHint() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1003, 25.f, FColor(255, 150, 60),
-			TEXT("SALA 4 · FISICA: Z dispara (rompe caja y muro) · APUNTA a la bala y MANTEN R: vuelve al canon y rearma lo que rompio · Shift+R: todo · X: bala INVERTIDA · B: rompe lo que tengas enfrente"));
+			TEXT("SALA 4 · FISICA: Z dispara (rompe caja y muro) · APUNTA a la bala y MANTEN R: vuelve al canon y rearma lo que rompio · Ctrl+R: todo · X: bala INVERTIDA · B: rompe lo que tengas enfrente"));
 	}
 }
 

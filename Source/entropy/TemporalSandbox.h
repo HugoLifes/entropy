@@ -9,10 +9,15 @@
 //   1 / 2 / 3    = ir a la sala de Eco / Inverso / Brecha del cuarto de pruebas
 //   0            = regresar a donde empezaste (las cajas)
 //   4            = ir a la sala 4 · Física (torreta y objetos rompibles)
+//   5            = ir a la sala 5 · Reflejos (torretas que te siguen, maniquíes para rematar)
 //   Z / X        = la torreta de la sala 4 dispara una bala normal / una bala invertida
 //   B            = romper el objeto rompible que tengas enfrente
 //   V            = Sobremarcha: el mundo lento y tú normal (prende/apaga)
-//   R / Shift+R  = R invierte solo lo que apuntas; Shift+R rebobina todo (pruebas)
+//   R / Ctrl+R   = R invierte solo lo que apuntas; Ctrl+R rebobina todo (pruebas)
+//   Clic derecho = apuntar (cámara al hombro; la mira selecciona)
+//   Clic izq.    = Detener lo que tienes en la mira (4 s; otro clic lo suelta) · o REMATE si el HUD lo muestra
+//   Shift        = dash (también en el aire, uno por salto)
+//   (pasiva) Ojo lento: apuntando, las balas cerca de ti se frenan
 // Modo tour: con -EntropiaTour en la línea de comandos recorre las salas solo, usa los poderes,
 // registra los FPS (ENTROPIA_TOUR en el log), toma capturas en Saved/Tour/ y cierra el juego.
 // También crea el cuarto de pruebas (ATemporalTestChamber) y la sala de física (ATemporalPhysicsLab) flotando sobre el Sandbox.
@@ -29,6 +34,13 @@ class UTemporalEnergyComponent;
 class UTemporalHUDWidget;
 class UObjectInversionComponent;
 class UOverdriveComponent;
+class UTemporalAimComponent;
+class UTimeStopComponent;
+class UTemporalDashComponent;
+class UTemporalHealthComponent;
+class USlowEyeComponent;
+class UTakedownComponent;
+class ATemporalProjectile;
 
 /** Un paso del modo tour: qué hacer y cuánto esperar (segundos reales). */
 struct FEntropiaTourStep
@@ -40,6 +52,7 @@ struct FEntropiaTourStep
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
+class ATemporalReflexRoom;
 
 UCLASS(meta = (DisplayName = "Temporal Sandbox"))
 class ENTROPY_API ATemporalSandbox : public AActor
@@ -97,6 +110,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	FVector PhysicsLabOffset = FVector(0.f, 3500.f, 3000.f);
 
+	/** Crea la sala 5 · Reflejos (torretas que te siguen, columnas, maniquíes). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnReflexRoom = true;
+
+	/** Dónde aparece la sala 5 respecto al Sandbox (cm). Del otro lado del cuarto de pruebas. */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector ReflexRoomOffset = FVector(0.f, -3500.f, 3000.f);
+
 	/** Empezar el Play dentro de la sala 1. */
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	bool bStartInChamber = true;
@@ -133,12 +154,21 @@ private:
 	void GoToRoom(int32 RoomIndex);
 	void OnBackToStart();
 	void OnRoom4();
+	void OnRoom5();
+	/** La vida llegó a 0: al siguiente frame reapareces (no en medio del golpe de la bala). */
+	void OnPlayerDied();
+	void RespawnAfterDeath();
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();
 	void OnOverdrive();
+	void OnAimPressed();
+	void OnAimReleased();
+	void OnPrimaryPressed();
+	void OnDash();
 	/** Modo tour (pruebas automáticas en juego). */
 	void StartTour();
+	void BuildChaosSteps();
 	void BeginTourStep();
 	void FinishTourStep();
 	void TourRewindAll(bool bStart);
@@ -171,7 +201,25 @@ private:
 	UPROPERTY()
 	TObjectPtr<UOverdriveComponent> PlayerOverdrive;
 
-	/** La R actual se pulsó con Shift (rebobinar todo) y no como Invertir objeto. */
+	UPROPERTY()
+	TObjectPtr<UTemporalAimComponent> PlayerAim;
+
+	UPROPERTY()
+	TObjectPtr<UTimeStopComponent> PlayerTimeStop;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalDashComponent> PlayerDash;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalHealthComponent> PlayerHealth;
+
+	UPROPERTY()
+	TObjectPtr<USlowEyeComponent> PlayerSlowEye;
+
+	UPROPERTY()
+	TObjectPtr<UTakedownComponent> PlayerTakedown;
+
+	/** La R actual se pulsó con Ctrl (rebobinar todo) y no como Invertir objeto. */
 	bool bRewindingAll = false;
 
 	UPROPERTY()
@@ -179,6 +227,19 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ATemporalPhysicsLab> PhysicsLab;
+
+	UPROPERTY()
+	TObjectPtr<ATemporalReflexRoom> ReflexRoom;
+
+	/** Cosas que creó un paso del tour y hay que borrar después. */
+	TArray<TWeakObjectPtr<AActor>> TourTemps;
+
+	/** Una posición que un paso del tour guarda para que el siguiente mida cuánto se movió algo. */
+	FVector TourMark = FVector::ZeroVector;
+
+	/** Modo tour: una bala que le pega al jugador, desde From hacia Direction. */
+	ATemporalProjectile* SpawnTourBullet(const FVector& From, const FVector& Direction);
+	void ClearTourTemps();
 
 	FVector PlayerStartLocation = FVector::ZeroVector;
 

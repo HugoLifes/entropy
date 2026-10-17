@@ -4,6 +4,7 @@
 #include "TemporalBreakable.h"
 #include "TemporalFX.h"
 #include "TemporalProjectile.h"
+#include "TemporalSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -14,7 +15,9 @@
 
 ATemporalTurret::ATemporalTurret()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Solo tickea mientras sigue al jugador (sala 5).
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -26,6 +29,8 @@ ATemporalTurret::ATemporalTurret()
 	Base->SetRelativeLocation(FVector(0.f, 0.f, 25.f));
 	Base->SetRelativeScale3D(FVector(0.6f, 0.6f, 0.5f));
 	Base->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	// Así la burbuja de Brecha la detecta y la congela.
+	Base->SetGenerateOverlapEvents(true);
 	if (Cube.Succeeded())
 	{
 		Base->SetStaticMesh(Cube.Object);
@@ -53,6 +58,71 @@ void ATemporalTurret::BeginPlay()
 	Super::BeginPlay();
 	TemporalFX::ApplyToAllSlots(Base, TemporalFX::MakeSolid(this, FLinearColor(0.15f, 0.15f, 0.18f)));
 	TemporalFX::ApplyToAllSlots(Barrel, TemporalFX::MakeSolid(this, FLinearColor(0.6f, 0.15f, 0.1f)));
+	if (bTrackPlayer)
+	{
+		if (UTemporalSubsystem* Subsystem = GetWorld()->GetSubsystem<UTemporalSubsystem>())
+		{
+			Subsystem->RegisterTimeTarget(this);
+		}
+	}
+}
+
+void ATemporalTurret::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UTemporalSubsystem* Subsystem = GetWorld() ? GetWorld()->GetSubsystem<UTemporalSubsystem>() : nullptr)
+	{
+		Subsystem->UnregisterTimeTarget(this);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATemporalTurret::SetTrackingEnabled(bool bEnabled)
+{
+	if (bTrackingEnabled == bEnabled)
+	{
+		return;
+	}
+	bTrackingEnabled = bEnabled && bTrackPlayer;
+	// El primer disparo tarda un poco más: te da tiempo de reaccionar.
+	FireTimer = FireInterval - FirstShotDelay;
+	SetActorTickEnabled(bTrackingEnabled);
+}
+
+void ATemporalTurret::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// DeltaTime ya viene con su tiempo propio: congelada vale 0 y no gira ni dispara.
+	const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!bTrackingEnabled || !Player || DeltaTime <= 0.f)
+	{
+		return;
+	}
+
+	// Apunta al pecho del jugador.
+	const FVector Target = Player->GetActorLocation() + FVector(0.f, 0.f, 20.f);
+	const FVector From = Muzzle->GetComponentLocation();
+	const FVector ToTarget = Target - From;
+	const float DesiredYaw = ToTarget.Rotation().Yaw;
+	const float NewYaw = FMath::FixedTurn(GetActorRotation().Yaw, DesiredYaw, TurnRate * DeltaTime);
+	SetActorRotation(FRotator(0.f, NewYaw, 0.f));
+
+	FireTimer += DeltaTime;
+	if (FireTimer < FireInterval)
+	{
+		return;
+	}
+
+	// ¿Ya te apunta y te ve? (las balas solo se traslapan: no tapan la vista)
+	const float YawError = FMath::Abs(FMath::FindDeltaAngleDegrees(NewYaw, DesiredYaw));
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TemporalTurretSight), false, this);
+	FHitResult Hit;
+	const bool bBlocked = GetWorld()->LineTraceSingleByChannel(Hit, From, Target, ECC_Visibility, Params) && Hit.GetActor() != Player;
+	if (YawError <= AimTolerance && !bBlocked)
+	{
+		FireTimer = 0.f;
+		FireTowards(ToTarget.GetSafeNormal());
+	}
 }
 
 ATemporalProjectile* ATemporalTurret::SpawnBullet(const FVector& Location)
@@ -83,10 +153,16 @@ ATemporalProjectile* ATemporalTurret::SpawnBullet(const FVector& Location)
 
 void ATemporalTurret::Fire()
 {
+	FireTowards(GetActorForwardVector());
+}
+
+void ATemporalTurret::FireTowards(const FVector& Direction)
+{
 	const FVector From = Muzzle->GetComponentLocation();
 	if (ATemporalProjectile* Bullet = SpawnBullet(From))
 	{
-		Bullet->Launch(From, GetActorForwardVector(), this);
+		Bullet->bHurtsPlayer = bBulletsHurtPlayer;
+		Bullet->Launch(From, Direction, this);
 		TemporalFX::Burst(this, From, FLinearColor(1.f, 0.55f, 0.1f), 0.4f);
 	}
 }

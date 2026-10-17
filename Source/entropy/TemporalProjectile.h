@@ -4,6 +4,8 @@
 // Bala invertida (estilo Tenet): nace incrustada en la pared, espera un instante y vuela HACIA ATRÁS hasta el
 // cañón; al pasar por un bloque roto, lo rearma.
 // Tiene traslape: la burbuja de Brecha la frena o la congela en el aire.
+// Fase 3: las balas de las torretas que te siguen (bHurtsPlayer) te pegan: quitan vida y te empujan. Si eres
+// invulnerable (dash) te atraviesan.
 
 #pragma once
 
@@ -44,6 +46,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	float InvertedDelay = 0.6f;
 
+	/** ¿Le pega al jugador? (solo las de las torretas de la sala 5) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Combate")
+	bool bHurtsPlayer = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Combate")
+	float Damage = 20.f;
+
+	/** Empujón al jugador cuando le pega (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Combate")
+	float PlayerPush = 350.f;
+
+	/** Velocidad con la que se mueve de verdad ahora (con su tiempo propio y el del mundo). Cero si está quieta o rebobinándose. */
+	FVector GetRealVelocity() const;
+
 	/** Bala normal desde el cañón. */
 	void Launch(const FVector& InMuzzle, const FVector& Direction, AActor* InGun);
 
@@ -77,6 +93,8 @@ private:
 	void ReturnToGun();
 	void ResetIgnored();
 	void Paint(const FLinearColor& Color);
+	/** Le pega al jugador (vida y empujón). False si no hubo daño (invulnerable): entonces lo atraviesa. */
+	bool HitPlayer(class ACharacter* Victim, const FVector& Where);
 
 	EState State = EState::Idle;
 	FVector Muzzle = FVector::ZeroVector;

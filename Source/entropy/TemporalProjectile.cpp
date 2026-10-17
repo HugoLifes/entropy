@@ -4,12 +4,17 @@
 #include "TemporalBreakable.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
+#include "TemporalCombat.h"
+#include "TemporalHealthComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/WorldSettings.h"
+#include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -113,11 +118,58 @@ void ATemporalProjectile::Tick(float DeltaTime)
 	}
 }
 
+FVector ATemporalProjectile::GetRealVelocity() const
+{
+	if (Recorder->IsRewinding())
+	{
+		return FVector::ZeroVector;
+	}
+	const AWorldSettings* Settings = GetWorldSettings();
+	const float Global = Settings ? Settings->GetEffectiveTimeDilation() : 1.f;
+	const float Scale = Speed * CustomTimeDilation * Global;
+	switch (State)
+	{
+	case EState::Flying:
+		return Dir * Scale;
+	case EState::InvertedFlying:
+		return -Dir * Scale;
+	default:
+		return FVector::ZeroVector;
+	}
+}
+
+bool ATemporalProjectile::HitPlayer(ACharacter* Victim, const FVector& Where)
+{
+	UTemporalHealthComponent* Health = Victim->FindComponentByClass<UTemporalHealthComponent>();
+	if (!Health || !Health->ApplyDamage(Damage))
+	{
+		return false;
+	}
+	Victim->LaunchCharacter(Dir * PlayerPush + FVector(0.f, 0.f, 120.f), true, false);
+	TemporalFX::Burst(this, Where, FLinearColor(1.f, 0.15f, 0.1f), 0.5f);
+	Destroy();
+	return true;
+}
+
 void ATemporalProjectile::StepForward(float DeltaTime)
 {
 	FVector Start = GetActorLocation();
 	const float StepLength = Speed * DeltaTime;
 	const FVector End = Start + Dir * StepLength;
+
+	// ¿Este tramo toca al jugador? Las paredes solo se revisan hasta ahí (una pared en medio te protege).
+	ACharacter* Victim = bHurtsPlayer ? Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0)) : nullptr;
+	float PlayerDistance = -1.f;
+	if (Victim && !Pierced.Contains(Victim))
+	{
+		const UCapsuleComponent* Capsule = Victim->GetCapsuleComponent();
+		float Fraction = 0.f;
+		if (TemporalCombat::SegmentHitsCapsule(Start, End, Capsule->GetComponentLocation(), Capsule->GetScaledCapsuleHalfHeight(), Capsule->GetScaledCapsuleRadius(), Fraction))
+		{
+			PlayerDistance = Fraction * StepLength;
+		}
+	}
+	const FVector TraceEnd = PlayerDistance >= 0.f ? Start + Dir * PlayerDistance : End;
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TemporalProjectile), false, this);
 	auto Ignore = [&Params](const AActor* Actor)
@@ -138,7 +190,7 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 	for (int32 Attempt = 0; Attempt < 4; ++Attempt)
 	{
 		FHitResult Hit;
-		if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+		if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, TraceEnd, ECC_Visibility, Params))
 		{
 			break;
 		}
@@ -173,6 +225,16 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 		Pierced.Add(HitActor);
 		Ignore(HitActor);
 		Start = Hit.ImpactPoint;
+	}
+
+	if (PlayerDistance >= 0.f)
+	{
+		if (HitPlayer(Victim, TraceEnd))
+		{
+			return;
+		}
+		// Invulnerable (dash): la bala te atraviesa.
+		Pierced.Add(Victim);
 	}
 
 	SetActorLocation(End);

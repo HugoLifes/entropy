@@ -6,13 +6,18 @@
 #include "Misc/AutomationTest.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalRecorderComponent.h"
-#include "ObjectInversionComponent.h"
+#include "TemporalAimComponent.h"
 #include "TemporalFX.h"
 #include "Misc/App.h"
 #include "TemporalFracture.h"
 #include "TemporalDebrisComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalTrailComponent.h"
+#include "TemporalDilation.h"
+#include "TemporalDashComponent.h"
+#include "TemporalHealthComponent.h"
+#include "TemporalCombat.h"
+#include "TakedownComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -120,12 +125,12 @@ bool FEntropiaAimPrefersCrosshair::RunTest(const FString& Parameters)
 	// Plataforma de 3 m bajo el personaje: su esfera cubre la mira (borde -9°) pero su centro está a 30°.
 	// Bala a 10 m justo en la mira: borde -1°, centro 0.5°. Debe ganar la bala.
 	TestTrue(TEXT("La bala en la mira le gana a la plataforma grande cercana"),
-		UObjectInversionComponent::IsBetterAim(-1.f, 0.5f, -9.f, 30.f));
+		UTemporalAimComponent::IsBetterAim(-1.f, 0.5f, -9.f, 30.f));
 	TestFalse(TEXT("Y no al revés"),
-		UObjectInversionComponent::IsBetterAim(-9.f, 30.f, -1.f, 0.5f));
+		UTemporalAimComponent::IsBetterAim(-9.f, 30.f, -1.f, 0.5f));
 	// Si ninguno cubre la mira, gana el borde más cercano.
 	TestTrue(TEXT("Fuera de la mira gana el borde más cercano"),
-		UObjectInversionComponent::IsBetterAim(1.f, 3.f, 2.5f, 2.6f));
+		UTemporalAimComponent::IsBetterAim(1.f, 3.f, 2.5f, 2.6f));
 	return true;
 }
 
@@ -382,6 +387,214 @@ bool FEntropiaDebrisFollowsShardClock::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Rebobinando, a los 4 s de historia el polvo sigue sin volver"), UTemporalDebrisComponent::TimeFromShardHistory(4.f, Life), Life, 0.0001f);
 	TestEqual(TEXT("A 1 s del golpe, el polvo está a 1 s del golpe"), UTemporalDebrisComponent::TimeFromShardHistory(1.f, Life), 1.f, 0.0001f);
 	TestEqual(TEXT("Sin historia, el polvo está en el golpe"), UTemporalDebrisComponent::TimeFromShardHistory(-0.1f, Life), 0.f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pulido: campos de tiempo detenido (burbuja)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFieldSetUpdatesSameOwner, "Entropia.Field.UpdatesSameOwner", EntropiaTestFlags::Flags)
+bool FEntropiaFieldSetUpdatesSameOwner::RunTest(const FString& Parameters)
+{
+	FTemporalFieldSet Set;
+	Set.Set(7, FVector(0.f), 100.f, 1.f);
+	Set.Set(7, FVector(50.f, 0.f, 0.f), 300.f, 0.5f);
+	TestEqual(TEXT("La misma burbuja ocupa un solo lugar"), Set.Fields.Num(), 1);
+	TestEqual(TEXT("Y se actualiza su radio"), Set.Fields[0].Radius, 300.f, 0.001f);
+	Set.Remove(7);
+	TestEqual(TEXT("Al quitarla no queda nada"), Set.Fields.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFieldSetCapsAndReplacesOldest, "Entropia.Field.CapsAndReplacesOldest", EntropiaTestFlags::Flags)
+bool FEntropiaFieldSetCapsAndReplacesOldest::RunTest(const FString& Parameters)
+{
+	FTemporalFieldSet Set;
+	Set.Set(1, FVector(0.f), 100.f, 1.f);
+	Set.Set(2, FVector(0.f), 100.f, 1.f);
+	Set.Set(3, FVector(0.f), 100.f, 1.f);
+	TestEqual(TEXT("Nunca hay más campos que lugares en el material"), Set.Fields.Num(), FTemporalFieldSet::MaxFields);
+	bool bHasFirst = false;
+	for (const FTemporalField& Field : Set.Fields)
+	{
+		bHasFirst |= Field.Id == 1;
+	}
+	TestFalse(TEXT("Si hay demasiadas burbujas, la más vieja deja de pintarse"), bHasFirst);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Árbitro del tiempo: cada poder pide una velocidad y gana la más lenta
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationSlowestWins, "Entropia.Dilation.SlowestWins", EntropiaTestFlags::Flags)
+bool FEntropiaDilationSlowestWins::RunTest(const FString& Parameters)
+{
+	FTemporalDilationLedger Ledger;
+	int32 Key = 0, OjoLento = 0, Burbuja = 0;
+	TestTrue(TEXT("Primer pedido cambia la velocidad"), Ledger.Request(&Key, &OjoLento, 0.25f));
+	TestEqual(TEXT("Ojo lento: 0.25"), Ledger.Get(&Key), 0.25f, 0.0001f);
+	Ledger.Request(&Key, &Burbuja, 0.f);
+	TestEqual(TEXT("La burbuja congela: gana la más lenta"), Ledger.Get(&Key), 0.f, 0.0001f);
+	TestTrue(TEXT("Soltar la burbuja cambia la velocidad"), Ledger.Release(&Key, &Burbuja));
+	TestEqual(TEXT("Vuelve la del Ojo lento, no 1"), Ledger.Get(&Key), 0.25f, 0.0001f);
+	Ledger.Release(&Key, &OjoLento);
+	TestEqual(TEXT("Sin pedidos: tiempo normal"), Ledger.Get(&Key), 1.f, 0.0001f);
+	TestFalse(TEXT("Y la clave ya no se guarda"), Ledger.Has(&Key));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationReleaseSource, "Entropia.Dilation.ReleaseSource", EntropiaTestFlags::Flags)
+bool FEntropiaDilationReleaseSource::RunTest(const FString& Parameters)
+{
+	FTemporalDilationLedger Ledger;
+	int32 K1 = 0, K2 = 0, A = 0, B = 0;
+	Ledger.Request(&K1, &A, 0.5f);
+	Ledger.Request(&K2, &A, 0.f);
+	Ledger.Request(&K2, &B, 0.3f);
+	const TArray<const void*> Changed = Ledger.ReleaseSource(&A);
+	TestEqual(TEXT("Cambiaron las dos claves"), Changed.Num(), 2);
+	TestEqual(TEXT("K1 vuelve a 1"), Ledger.Get(&K1), 1.f, 0.0001f);
+	TestEqual(TEXT("K2 queda con el pedido de B"), Ledger.Get(&K2), 0.3f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationActorRate, "Entropia.Dilation.ActorRateIsSlowestOfOwnAndWorld", EntropiaTestFlags::Flags)
+bool FEntropiaDilationActorRate::RunTest(const FString& Parameters)
+{
+	// Lo que se escribe en CustomTimeDilation para que el ritmo real (propio × mundo) sea el MÁS LENTO de los dos.
+	TestEqual(TEXT("Ojo lento (0.25) en Sobremarcha (0.25): la bala va a 0.25, no a 0.0625"), UTemporalDilationSubsystem::ActorTimeFor(0.25f, 0.25f), 1.f, 0.0001f);
+	TestEqual(TEXT("Sin cámara lenta global: su propia velocidad"), UTemporalDilationSubsystem::ActorTimeFor(0.25f, 1.f), 0.25f, 0.0001f);
+	TestEqual(TEXT("Congelada sigue congelada"), UTemporalDilationSubsystem::ActorTimeFor(0.f, 0.3f), 0.f, 0.0001f);
+	TestEqual(TEXT("Más lenta que el mundo: 0.1 real con el mundo a 0.25"), UTemporalDilationSubsystem::ActorTimeFor(0.1f, 0.25f), 0.4f, 0.0001f);
+	TestEqual(TEXT("Sin pedidos: 1 (el mundo ya la frena)"), UTemporalDilationSubsystem::ActorTimeFor(1.f, 0.25f), 1.f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationPlayerCompensation, "Entropia.Dilation.PlayerCompensation", EntropiaTestFlags::Flags)
+bool FEntropiaDilationPlayerCompensation::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Mundo a 0.25: el jugador va x4 para verse normal"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 0.25f), 4.f, 0.0001f);
+	TestEqual(TEXT("Jugador congelado sigue congelado"), UTemporalDilationSubsystem::PlayerTimeFor(0.f, 0.25f), 0.f, 0.0001f);
+	TestEqual(TEXT("Sin cámara lenta: 1"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 1.f), 1.f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Dash
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDashDirection, "Entropia.Dash.DirectionFallsBackToFacing", EntropiaTestFlags::Flags)
+bool FEntropiaDashDirection::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Quieto: dash hacia donde miras"),
+		UTemporalDashComponent::ComputeDashDirection(FVector::ZeroVector, FVector(0.f, 1.f, 0.f)).Equals(FVector(0.f, 1.f, 0.f), 0.001f));
+	TestTrue(TEXT("Moviéndote: hacia donde te mueves, plano y normalizado"),
+		UTemporalDashComponent::ComputeDashDirection(FVector(3.f, 0.f, 1.f), FVector(0.f, 1.f, 0.f)).Equals(FVector(1.f, 0.f, 0.f), 0.001f));
+	TestTrue(TEXT("Mirando hacia arriba: el dash sigue siendo horizontal"),
+		UTemporalDashComponent::ComputeDashDirection(FVector::ZeroVector, FVector(0.6f, 0.f, 0.8f)).Equals(FVector(1.f, 0.f, 0.f), 0.001f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDashCooldown, "Entropia.Dash.CooldownAndAirDash", EntropiaTestFlags::Flags)
+bool FEntropiaDashCooldown::RunTest(const FString& Parameters)
+{
+	TestFalse(TEXT("En recarga no hay dash"), UTemporalDashComponent::CanDash(0.3f, 0.6f, false, false));
+	TestTrue(TEXT("Pasada la recarga, sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, false, false));
+	TestFalse(TEXT("En el aire, solo uno por salto"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, true));
+	TestTrue(TEXT("En el aire, el primero sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, false));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Vida
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthDeathOnce, "Entropia.Health.DamageAndDeathOnce", EntropiaTestFlags::Flags)
+bool FEntropiaHealthDeathOnce::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	int32 Deaths = 0;
+	Health->OnDeath.AddLambda([&Deaths]() { ++Deaths; });
+	for (int32 i = 0; i < 5; ++i)
+	{
+		TestTrue(TEXT("Cada bala de 20 hace daño"), Health->ApplyDamage(20.f));
+	}
+	TestTrue(TEXT("Con 5 balas mueres"), Health->IsDead());
+	TestEqual(TEXT("La vida no baja de 0"), Health->Health, 0.f);
+	TestFalse(TEXT("Muerto ya no recibe daño"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("Mueres una sola vez"), Deaths, 1);
+	Health->ResetHealth();
+	TestFalse(TEXT("Al reaparecer estás vivo"), Health->IsDead());
+	TestEqual(TEXT("Y con la vida llena"), Health->Health, 100.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthRegen, "Entropia.Health.RegenAfterDelay", EntropiaTestFlags::Flags)
+bool FEntropiaHealthRegen::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	Health->ApplyDamage(40.f);
+	Health->Advance(3.9f);
+	TestEqual(TEXT("Antes de 4 s sin daño no se recupera"), Health->Health, 60.f, 0.01f);
+	Health->Advance(1.f);
+	TestEqual(TEXT("Después se recupera a 25/s (0.9 s → +22.5)"), Health->Health, 82.5f, 0.01f);
+	Health->Advance(10.f);
+	TestEqual(TEXT("Nunca pasa de 100"), Health->Health, 100.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaHealthInvulnerable, "Entropia.Health.InvulnerableBlocksDamage", EntropiaTestFlags::Flags)
+bool FEntropiaHealthInvulnerable::RunTest(const FString& Parameters)
+{
+	UTemporalHealthComponent* Health = NewObject<UTemporalHealthComponent>();
+	Health->SetInvulnerable(0.25f);
+	TestFalse(TEXT("Durante el dash la bala no hace daño"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("La vida sigue llena"), Health->Health, 100.f);
+	Health->Advance(0.3f);
+	TestTrue(TEXT("Pasado el instante, sí"), Health->ApplyDamage(20.f));
+	TestEqual(TEXT("Queda en 80"), Health->Health, 80.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Bala contra cápsula (pegar y esquiva perfecta)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCombatSegmentCapsule, "Entropia.Combat.SegmentHitsCapsule", EntropiaTestFlags::Flags)
+bool FEntropiaCombatSegmentCapsule::RunTest(const FString& Parameters)
+{
+	// Cápsula del jugador: 96 de media altura, 42 de radio, en el origen.
+	float Fraction = -1.f;
+	TestTrue(TEXT("De frente pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 0.f), FVector(500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestEqual(TEXT("Pega al llegar al borde (458 de 1000)"), Fraction, 0.458f, 0.002f);
+	TestFalse(TEXT("A 1 m de lado no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 100.f, 0.f), FVector(500.f, 100.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestFalse(TEXT("Por encima de la cabeza no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 200.f), FVector(500.f, 0.f, 200.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	TestFalse(TEXT("Si se queda corta no pega"), TemporalCombat::SegmentHitsCapsule(FVector(-500.f, 0.f, 0.f), FVector(-100.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, Fraction));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCombatTimeToHit, "Entropia.Combat.TimeToHitCapsule", EntropiaTestFlags::Flags)
+bool FEntropiaCombatTimeToHit::RunTest(const FString& Parameters)
+{
+	const float T = TemporalCombat::TimeToHitCapsule(FVector(-500.f, 0.f, 0.f), FVector(2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f);
+	TestEqual(TEXT("A 5 m y 25 m/s pega en ~0.183 s"), T, 0.1832f, 0.002f);
+	TestEqual(TEXT("Alejándose no pega"), TemporalCombat::TimeToHitCapsule(FVector(-500.f, 0.f, 0.f), FVector(-2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
+	TestEqual(TEXT("Si tarda más que la ventana, no cuenta"), TemporalCombat::TimeToHitCapsule(FVector(-2000.f, 0.f, 0.f), FVector(2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Remates
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaTakedownCondition, "Entropia.Takedown.BehindOrFrozen", EntropiaTestFlags::Flags)
+bool FEntropiaTakedownCondition::RunTest(const FString& Parameters)
+{
+	// Maniquí en el origen mirando hacia +X. Remate: a menos de 180 cm y (a su espalda > 120° o congelado).
+	const FVector Target = FVector::ZeroVector;
+	const FVector Forward(1.f, 0.f, 0.f);
+	TestTrue(TEXT("A 1.5 m por la espalda: sí"), UTakedownComponent::CanTakedown(FVector(-150.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("A 1.5 m de frente: no"), UTakedownComponent::CanTakedown(FVector(150.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestTrue(TEXT("De frente pero congelado: sí"), UTakedownComponent::CanTakedown(FVector(150.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
+	TestFalse(TEXT("Por la espalda pero a 2.5 m: no"), UTakedownComponent::CanTakedown(FVector(-250.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("De lado (90°): no"), UTakedownComponent::CanTakedown(FVector(0.f, 150.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("Congelado pero lejos: no"), UTakedownComponent::CanTakedown(FVector(400.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
 	return true;
 }
 

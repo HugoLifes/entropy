@@ -101,6 +101,7 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 		return;
 	}
 
+	const double BreakStart = FPlatformTime::Seconds();
 	bBroken = true;
 	Mesh->SetVisibility(false);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -133,6 +134,9 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 	// Astillas y polvo (reversibles). El piso: la base del objeto.
 	const float FloorZ = GetActorLocation().Z - Size.Z * 0.5f;
 	Debris->Burst(ImpactPoint, Direction, Color, FloorZ);
+
+	// Medición (anti-meta del diseño: romper < 2 ms por objeto). Sale en el log del tour.
+	UE_LOG(LogTemp, Log, TEXT("ENTROPIA_PERF break=%s shards=%d ms=%.2f"), *GetName(), Shards.Num(), (FPlatformTime::Seconds() - BreakStart) * 1000.0);
 }
 
 void ATemporalBreakable::SpawnIrregularShards(const FVector& ImpactPoint)

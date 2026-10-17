@@ -1,5 +1,5 @@
 // ENTROPÍA · Sobremarcha (rama Brecha) — Fase 1
-// V prende y apaga: el mundo va lento (dilatación global) y tú a velocidad normal (tu dilatación la compensa).
+// V prende y apaga: el mundo va lento (dilatación global, pedida al árbitro del tiempo) y tú a velocidad normal.
 // Deja una estela cian con tu pose y tiñe la imagen. Gasta energía en tiempo real.
 // No va junto con el Paso Inverso: encender uno apaga el otro.
 

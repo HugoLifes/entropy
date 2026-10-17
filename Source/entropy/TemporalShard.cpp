@@ -64,8 +64,8 @@ void ATemporalShard::Build(const FFractureCell& Cell, const FVector& CellCentroi
 	{
 		P = (P - CellCentroid) * Shrink;
 	}
-	Mesh->ClearCollisionConvexMeshes();
-	Mesh->AddCollisionConvexMesh(Hull);
+	// Una sola llamada: la colisión convexa se calcula una vez por pedazo.
+	Mesh->SetCollisionConvexMeshes({ Hull });
 	Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
 	Mesh->SetSimulatePhysics(true);
 

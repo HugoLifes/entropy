@@ -5,6 +5,7 @@
 
 #include "Components/PostProcessComponent.h"
 #include "Engine/World.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -57,6 +58,44 @@ float FTemporalPulseSet::StrengthAt(const FTemporalPulse& Pulse)
 {
 	const float A = Pulse.Duration > 0.f ? FMath::Clamp(Pulse.Age / Pulse.Duration, 0.f, 1.f) : 1.f;
 	return Pulse.Strength * (1.f - A);
+}
+
+void FTemporalFieldSet::Set(uint32 Id, const FVector& Center, float Radius, float Strength)
+{
+	for (FTemporalField& Field : Fields)
+	{
+		if (Field.Id == Id)
+		{
+			Field.Center = Center;
+			Field.Radius = Radius;
+			Field.Strength = Strength;
+			return;
+		}
+	}
+	if (Fields.Num() >= MaxFields)
+	{
+		int32 Oldest = 0;
+		for (int32 i = 1; i < Fields.Num(); ++i)
+		{
+			if (Fields[i].Serial < Fields[Oldest].Serial)
+			{
+				Oldest = i;
+			}
+		}
+		Fields.RemoveAt(Oldest);
+	}
+	FTemporalField Field;
+	Field.Id = Id;
+	Field.Center = Center;
+	Field.Radius = Radius;
+	Field.Strength = Strength;
+	Field.Serial = NextSerial++;
+	Fields.Add(Field);
+}
+
+void FTemporalFieldSet::Remove(uint32 Id)
+{
+	Fields.RemoveAll([Id](const FTemporalField& Field) { return Field.Id == Id; });
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +170,22 @@ void UTemporalFXSubsystem::SetAura(AActor* Target, float Strength)
 	}
 }
 
+void UTemporalFXSubsystem::SetField(const UObject* Owner, const FVector& Center, float Radius, float Strength)
+{
+	if (Owner)
+	{
+		Fields.Set(Owner->GetUniqueID(), Center, Radius, FMath::Clamp(Strength, 0.f, 1.f));
+	}
+}
+
+void UTemporalFXSubsystem::ClearField(const UObject* Owner)
+{
+	if (Owner)
+	{
+		Fields.Remove(Owner->GetUniqueID());
+	}
+}
+
 void UTemporalFXSubsystem::Tick(float DeltaTime)
 {
 	const float RealDelta = TemporalFX::RealDelta();
@@ -177,19 +232,56 @@ void UTemporalFXSubsystem::ApplyToMaterial(bool& bOutAnyActive)
 		return true;
 	};
 
+	// Lugares de onda: primero el borde de cada campo (un anillo quieto que ondula), luego las ondas sueltas.
+	TArray<FLinearColor, TInlineAllocator<FTemporalPulseSet::MaxPulses>> Slots;
+	const float Aspect = static_cast<float>(SizeX) / static_cast<float>(SizeY);
+	FVector CameraRight = FVector::RightVector;
+	if (const APlayerCameraManager* Camera = PC->PlayerCameraManager)
+	{
+		CameraRight = Camera->GetCameraRotation().Quaternion().GetRightVector();
+	}
+	const float Wobble = FMath::Sin(static_cast<float>(GetWorld()->GetRealTimeSeconds()) * 5.f);
+	for (const FTemporalField& Field : Fields.Fields)
+	{
+		FVector2D CenterUV, EdgeUV;
+		if (Slots.Num() < FTemporalPulseSet::MaxPulses && ToScreen(Field.Center, CenterUV) && ToScreen(Field.Center + CameraRight * Field.Radius, EdgeUV))
+		{
+			// Radio en pantalla con las mismas unidades que el shader (x escalada por la proporción de la pantalla).
+			const float ScreenRadius = FVector2D((EdgeUV.X - CenterUV.X) * Aspect, EdgeUV.Y - CenterUV.Y).Size();
+			Slots.Add(FLinearColor(CenterUV.X, CenterUV.Y, ScreenRadius, (0.006f + 0.004f * Wobble) * Field.Strength));
+		}
+	}
+	for (const FTemporalPulse& P : Pulses.Pulses)
+	{
+		FVector2D UV;
+		if (Slots.Num() < FTemporalPulseSet::MaxPulses && ToScreen(P.World, UV))
+		{
+			Slots.Add(FLinearColor(UV.X, UV.Y, FTemporalPulseSet::RadiusAt(P), FTemporalPulseSet::StrengthAt(P)));
+		}
+	}
 	static const FName PulseNames[FTemporalPulseSet::MaxPulses] = { TEXT("Pulse0"), TEXT("Pulse1"), TEXT("Pulse2"), TEXT("Pulse3") };
 	for (int32 i = 0; i < FTemporalPulseSet::MaxPulses; ++i)
 	{
+		Material->SetVectorParameterValue(PulseNames[i], Slots.IsValidIndex(i) ? Slots[i] : FLinearColor(0.f, 0.f, 0.f, 0.f));
+	}
+	bOutAnyActive |= Slots.Num() > 0;
+
+	// Campos en coordenadas del mundo: el shader tiñe lo que de verdad está dentro de cada esfera.
+	static const FName FieldNames[FTemporalFieldSet::MaxFields] = { TEXT("FieldA"), TEXT("FieldB") };
+	FLinearColor FieldStrength(0.f, 0.f, 0.f, 0.f);
+	for (int32 i = 0; i < FTemporalFieldSet::MaxFields; ++i)
+	{
 		FLinearColor Value(0.f, 0.f, 0.f, 0.f);
-		FVector2D UV;
-		if (Pulses.Pulses.IsValidIndex(i) && ToScreen(Pulses.Pulses[i].World, UV))
+		if (Fields.Fields.IsValidIndex(i))
 		{
-			const FTemporalPulse& P = Pulses.Pulses[i];
-			Value = FLinearColor(UV.X, UV.Y, FTemporalPulseSet::RadiusAt(P), FTemporalPulseSet::StrengthAt(P));
+			const FTemporalField& Field = Fields.Fields[i];
+			Value = FLinearColor(Field.Center.X, Field.Center.Y, Field.Center.Z, Field.Radius);
+			(i == 0 ? FieldStrength.R : FieldStrength.G) = Field.Strength;
 			bOutAnyActive = true;
 		}
-		Material->SetVectorParameterValue(PulseNames[i], Value);
+		Material->SetVectorParameterValue(FieldNames[i], Value);
 	}
+	Material->SetVectorParameterValue(TEXT("FieldStrength"), FieldStrength);
 
 	FLinearColor Aura(0.f, 0.f, 0.f, 0.f);
 	FVector2D AuraUV;

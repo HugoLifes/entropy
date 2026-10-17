@@ -1,0 +1,225 @@
+// ENTROPÍA · Maniquí temporal
+
+#include "TemporalMannequin.h"
+#include "TemporalDilation.h"
+#include "TemporalFX.h"
+#include "TemporalFXSubsystem.h"
+#include "TemporalSubsystem.h"
+
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "PhysicsEngine/BodyInstance.h"
+
+ATemporalMannequin::ATemporalMannequin()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	AutoPossessAI = EAutoPossessAI::Disabled;
+	// Sin controlador igual cae al piso y se para (si no, flotaría donde aparece).
+	GetCharacterMovement()->bRunPhysicsWithNoController = true;
+	GetMesh()->SetRelativeLocationAndRotation(MeshRelativeLocation, MeshRelativeRotation);
+}
+
+void ATemporalMannequin::BeginPlay()
+{
+	Super::BeginPlay();
+	HomeLocation = GetActorLocation();
+	HomeRotation = GetActorRotation();
+	if (UTemporalSubsystem* Subsystem = GetWorld()->GetSubsystem<UTemporalSubsystem>())
+	{
+		Subsystem->RegisterTimeTarget(this);
+	}
+}
+
+void ATemporalMannequin::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UTemporalSubsystem* Subsystem = GetWorld() ? GetWorld()->GetSubsystem<UTemporalSubsystem>() : nullptr)
+	{
+		Subsystem->UnregisterTimeTarget(this);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATemporalMannequin::SetupFromPlayer(USkeletalMeshComponent* PlayerMesh)
+{
+	if (!PlayerMesh || !PlayerMesh->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+	USkeletalMeshComponent* Body = GetMesh();
+	Body->SetSkeletalMesh(PlayerMesh->GetSkeletalMeshAsset());
+	Body->SetAnimInstanceClass(PlayerMesh->GetAnimClass());
+	MeshRelativeLocation = PlayerMesh->GetRelativeLocation();
+	MeshRelativeRotation = PlayerMesh->GetRelativeRotation();
+	Body->SetRelativeLocationAndRotation(MeshRelativeLocation, MeshRelativeRotation);
+
+	// Los mismos materiales del jugador, oscurecidos y con los paneles en rojo apagado ("Paint Tint" del maniquí de Epic).
+	for (int32 Slot = 0; Slot < PlayerMesh->GetNumMaterials(); ++Slot)
+	{
+		if (UMaterialInterface* Source = PlayerMesh->GetMaterial(Slot))
+		{
+			UMaterialInstanceDynamic* Dark = UMaterialInstanceDynamic::Create(Source, this);
+			Dark->SetVectorParameterValue(TEXT("Paint Tint"), FLinearColor(0.45f, 0.08f, 0.06f));
+			Dark->SetVectorParameterValue(TEXT("Global BaseColor"), FLinearColor(0.3f, 0.32f, 0.38f));
+			Body->SetMaterial(Slot, Dark);
+		}
+	}
+}
+
+void ATemporalMannequin::ReceiveTakedown(const FVector& Direction, float Impulse)
+{
+	if (bKnockedDown || bPendingHit)
+	{
+		return;
+	}
+	const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+	if (Dilation && Dilation->IsFrozen(this))
+	{
+		// Golpe guardado: sale cuando su tiempo vuelva a correr.
+		bPendingHit = true;
+		PendingDirection = Direction;
+		PendingImpulse = Impulse;
+		TemporalFX::Burst(this, GetActorLocation(), FLinearColor(0.6f, 0.92f, 1.f), 0.5f);
+		return;
+	}
+	KnockDown(Direction, Impulse);
+}
+
+void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
+{
+	bKnockedDown = true;
+	bPendingHit = false;
+	DownTime = 0.f;
+
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetCharacterMovement()->DisableMovement();
+	USkeletalMeshComponent* Body = GetMesh();
+	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	// Así la burbuja de Brecha también lo detecta tirado (la cápsula ya no choca).
+	Body->SetGenerateOverlapEvents(true);
+	Body->SetSimulatePhysics(true);
+	Body->WakeAllRigidBodies();
+	Body->AddImpulseToAllBodiesBelow(Direction * Impulse, NAME_None, /*bVelChange=*/true, /*bIncludeSelf=*/true);
+
+	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(1.f, 0.4f, 0.25f), 0.7f);
+}
+
+void ATemporalMannequin::Recover(bool bWithEffect)
+{
+	if (bRagdollFrozen)
+	{
+		SetRagdollFrozen(false);
+	}
+	USkeletalMeshComponent* Body = GetMesh();
+	Body->SetSimulatePhysics(false);
+	Body->SetGenerateOverlapEvents(false);
+	Body->SetCollisionProfileName(TEXT("CharacterMesh"));
+	Body->AttachToComponent(GetCapsuleComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	Body->SetRelativeLocationAndRotation(MeshRelativeLocation, MeshRelativeRotation);
+
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	SetActorLocationAndRotation(HomeLocation, HomeRotation, false, nullptr, ETeleportType::TeleportPhysics);
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	bKnockedDown = false;
+	LookTime = 0.f;
+
+	if (bWithEffect)
+	{
+		// "El tiempo lo regresa": onda hacia adentro y destello cian donde reaparece.
+		if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+		{
+			FX->Pulse(HomeLocation, -0.03f, 0.6f, 0.3f);
+		}
+		TemporalFX::Burst(this, HomeLocation, FLinearColor(0.4f, 0.8f, 1.f), 0.6f);
+	}
+}
+
+void ATemporalMannequin::SetRagdollFrozen(bool bFrozen)
+{
+	bRagdollFrozen = bFrozen;
+	USkeletalMeshComponent* Body = GetMesh();
+	if (bFrozen)
+	{
+		FrozenLinear.Reset();
+		FrozenAngular.Reset();
+		for (const FBodyInstance* Bone : Body->Bodies)
+		{
+			FrozenLinear.Add(Bone ? Bone->GetUnrealWorldVelocity() : FVector::ZeroVector);
+			FrozenAngular.Add(Bone ? Bone->GetUnrealWorldAngularVelocityInRadians() : FVector::ZeroVector);
+		}
+		Body->SetEnableGravity(false);
+		Body->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+		Body->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		return;
+	}
+	Body->SetEnableGravity(true);
+	Body->WakeAllRigidBodies();
+	for (int32 i = 0; i < Body->Bodies.Num() && i < FrozenLinear.Num(); ++i)
+	{
+		if (FBodyInstance* Bone = Body->Bodies[i])
+		{
+			Bone->SetLinearVelocity(FrozenLinear[i], false);
+			Bone->SetAngularVelocityInRadians(FrozenAngular[i], false);
+		}
+	}
+	FrozenLinear.Reset();
+	FrozenAngular.Reset();
+}
+
+void ATemporalMannequin::ResetMannequin()
+{
+	bPendingHit = false;
+	if (bKnockedDown)
+	{
+		Recover(false);
+	}
+	SetActorLocationAndRotation(HomeLocation, HomeRotation, false, nullptr, ETeleportType::TeleportPhysics);
+	LookTime = 0.f;
+}
+
+void ATemporalMannequin::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// DeltaTime ya trae su tiempo propio: congelado vale 0 (no gira, no se levanta).
+	if (bPendingHit)
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		if (!Dilation || !Dilation->IsFrozen(this))
+		{
+			KnockDown(PendingDirection, PendingImpulse);
+		}
+		return;
+	}
+	if (bKnockedDown)
+	{
+		// Tirado y congelado (Detener o burbuja): el muñeco de trapo se queda quieto en el aire o a media caída.
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const bool bFrozenNow = Dilation && Dilation->IsFrozen(this);
+		if (bFrozenNow != bRagdollFrozen)
+		{
+			SetRagdollFrozen(bFrozenNow);
+		}
+		if (bRagdollFrozen)
+		{
+			GetMesh()->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			GetMesh()->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		}
+		DownTime += DeltaTime;
+		if (DownTime >= RecoverSeconds)
+		{
+			Recover(true);
+		}
+		return;
+	}
+	if (bLookAround && DeltaTime > 0.f && LookAroundDegrees > 0.f)
+	{
+		// Vaivén suave: la velocidad máxima de giro es LookAroundSpeed.
+		LookTime += DeltaTime;
+		const float Omega = FMath::DegreesToRadians(LookAroundSpeed) / FMath::DegreesToRadians(LookAroundDegrees);
+		const float Offset = LookAroundDegrees * FMath::Sin(LookTime * Omega);
+		SetActorRotation(HomeRotation + FRotator(0.f, Offset, 0.f));
+	}
+}

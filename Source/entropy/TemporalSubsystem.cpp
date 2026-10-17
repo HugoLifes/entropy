@@ -29,3 +29,34 @@ TArray<UTemporalRecorderComponent*> UTemporalSubsystem::GetRecorders() const
 	}
 	return Result;
 }
+
+void UTemporalSubsystem::RegisterTimeTarget(AActor* Actor)
+{
+	if (Actor)
+	{
+		TimeTargets.AddUnique(Actor);
+	}
+}
+
+void UTemporalSubsystem::UnregisterTimeTarget(AActor* Actor)
+{
+	TimeTargets.RemoveAll([Actor](const TWeakObjectPtr<AActor>& T) { return !T.IsValid() || T.Get() == Actor; });
+}
+
+TArray<AActor*> UTemporalSubsystem::GetTimeTargets() const
+{
+	TArray<AActor*> Result;
+	for (const TWeakObjectPtr<AActor>& Target : TimeTargets)
+	{
+		if (Target.IsValid())
+		{
+			Result.Add(Target.Get());
+		}
+	}
+	return Result;
+}
+
+bool UTemporalSubsystem::IsTimeTarget(const AActor* Actor) const
+{
+	return Actor && TimeTargets.ContainsByPredicate([Actor](const TWeakObjectPtr<AActor>& T) { return T.Get() == Actor; });
+}

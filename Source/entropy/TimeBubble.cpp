@@ -1,7 +1,9 @@
 // ENTROPÍA · Brecha
 
 #include "TimeBubble.h"
+#include "TemporalDilation.h"
 #include "TemporalFX.h"
+#include "TemporalFXSubsystem.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -12,7 +14,7 @@
 
 ATimeBubble::ATimeBubble()
 {
-	// Tick solo para aplicar la gravedad escalada a los cuerpos en cámara lenta.
+	// Tick para la vida (en tiempo real), el visual y la distorsión.
 	PrimaryActorTick.bCanEverTick = true;
 
 	Sphere = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere"));
@@ -40,16 +42,24 @@ void ATimeBubble::BeginPlay()
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &ATimeBubble::OnEnter);
 	Sphere->OnComponentEndOverlap.AddDynamic(this, &ATimeBubble::OnExit);
 
-	TemporalFX::ApplyToAllSlots(Visual, TemporalFX::MakeTranslucent(this, VisualColor));
+	TemporalFX::ApplyToAllSlots(Visual, TemporalFX::MakeField(this, VisualColor));
 	Visual->SetWorldScale3D(FVector(0.01f));
-	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(VisualColor.R, VisualColor.G, VisualColor.B), 1.2f);
+	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(VisualColor.R, VisualColor.G, VisualColor.B), BurstScale);
 
-	// Lo que ya estaba dentro cuando apareció la burbuja.
-	TArray<AActor*> Inside;
-	Sphere->GetOverlappingActors(Inside);
-	for (AActor* Actor : Inside)
+	// Lo que ya estaba dentro cuando apareció la burbuja (o su único objetivo).
+	bHasOnlyTarget = OnlyTarget.IsValid();
+	if (bHasOnlyTarget)
 	{
-		Affect(Actor);
+		Affect(OnlyTarget.Get());
+	}
+	else
+	{
+		TArray<AActor*> Inside;
+		Sphere->GetOverlappingActors(Inside);
+		for (AActor* Actor : Inside)
+		{
+			Affect(Actor);
+		}
 	}
 	// La vida se cuenta en Tick con tiempo real (no SetLifeSpan): con la Sobremarcha el mundo va lento,
 	// pero tus poderes duran lo mismo de siempre.
@@ -57,15 +67,16 @@ void ATimeBubble::BeginPlay()
 
 void ATimeBubble::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Al desaparecer, todo vuelve al tiempo normal.
-	TArray<TWeakObjectPtr<AActor>> ToRelease = Affected.Array();
-	for (const TWeakObjectPtr<AActor>& Actor : ToRelease)
+	// Al desaparecer, todo vuelve al tiempo normal (o al de otro efecto que siga encima).
+	if (UTemporalDilationSubsystem* DilationSubsystem = UTemporalDilationSubsystem::Get(this))
 	{
-		Release(Actor.Get());
+		DilationSubsystem->ReleaseSource(this);
+	}
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->ClearField(this);
 	}
 	Affected.Reset();
-	FrozenBodies.Reset();
-	SlowedBodies.Reset();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -76,7 +87,7 @@ void ATimeBubble::Tick(float DeltaTime)
 
 	// Visual: crece rápido al aparecer y se encoge en los últimos 0.3 s. La esfera básica mide 100 cm.
 	Age += TemporalFX::RealDelta();
-	if (LifeSeconds > 0.f && Age >= LifeSeconds)
+	if ((LifeSeconds > 0.f && Age >= LifeSeconds) || (bHasOnlyTarget && !OnlyTarget.IsValid()))
 	{
 		Destroy();
 		return;
@@ -89,18 +100,14 @@ void ATimeBubble::Tick(float DeltaTime)
 	}
 	Visual->SetWorldScale3D(FVector(FMath::Max(0.01f, Sphere->GetScaledSphereRadius() / 50.f * Grow)));
 
-	// En cámara lenta todo pasa Dilation veces más lento: la velocidad se escala por Dilation
-	// y la aceleración (gravedad) por Dilation². Es una aproximación: los choques siguen siendo a velocidad real.
-	const float GravityZ = GetWorld()->GetGravityZ() * Dilation * Dilation;
-	for (const TPair<TWeakObjectPtr<AActor>, FSlowedBody>& Pair : SlowedBodies)
+	// Distorsión: lo de adentro se ve congelado (más fuerte cuanto más lento va el tiempo) y el borde ondula.
+	UTemporalFXSubsystem* FX = bDrawField ? UTemporalFXSubsystem::Get(this) : nullptr;
+	if (FX)
 	{
-		AActor* Actor = Pair.Key.Get();
-		UPrimitiveComponent* Root = Actor ? Cast<UPrimitiveComponent>(Actor->GetRootComponent()) : nullptr;
-		if (Root && Root->IsSimulatingPhysics() && Pair.Value.bHadGravity)
-		{
-			Root->AddForce(FVector(0.f, 0.f, GravityZ), NAME_None, /*bAccelChange=*/true);
-		}
+		const float Frozen = FMath::Clamp(1.f - Dilation, 0.f, 1.f);
+		FX->SetField(this, GetActorLocation(), Sphere->GetScaledSphereRadius() * Grow, Frozen * Grow);
 	}
+	// La gravedad escalada de los cuerpos en cámara lenta la aplica el árbitro del tiempo.
 }
 
 void ATimeBubble::OnEnter(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -119,32 +126,19 @@ void ATimeBubble::Affect(AActor* Actor)
 	{
 		return;
 	}
+	if (bHasOnlyTarget && Actor != OnlyTarget.Get())
+	{
+		return;
+	}
 	if (!bAffectPlayer && Actor == UGameplayStatics::GetPlayerPawn(this, 0))
 	{
 		return;
 	}
 
 	Affected.Add(Actor);
-	Actor->CustomTimeDilation = Dilation;
-
-	// La física de Unreal no respeta CustomTimeDilation, así que congelamos los cuerpos a mano.
-	UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
-	if (Root && Root->IsSimulatingPhysics() && Dilation < 0.05f)
+	if (UTemporalDilationSubsystem* DilationSubsystem = UTemporalDilationSubsystem::Get(this))
 	{
-		FFrozenBody Body;
-		Body.LinearVelocity = Root->GetPhysicsLinearVelocity();
-		Body.AngularVelocity = Root->GetPhysicsAngularVelocityInDegrees();
-		FrozenBodies.Add(Actor, Body);
-		Root->SetSimulatePhysics(false);
-	}
-	else if (Root && Root->IsSimulatingPhysics() && !FMath::IsNearlyEqual(Dilation, 1.f))
-	{
-		FSlowedBody Body;
-		Body.bHadGravity = Root->IsGravityEnabled();
-		SlowedBodies.Add(Actor, Body);
-		Root->SetEnableGravity(false);
-		Root->SetPhysicsLinearVelocity(Root->GetPhysicsLinearVelocity() * Dilation);
-		Root->SetPhysicsAngularVelocityInDegrees(Root->GetPhysicsAngularVelocityInDegrees() * Dilation);
+		DilationSubsystem->Request(Actor, this, Dilation);
 	}
 }
 
@@ -156,30 +150,14 @@ void ATimeBubble::Release(AActor* Actor)
 	}
 
 	Affected.Remove(Actor);
-	Actor->CustomTimeDilation = 1.f;
-
-	if (const FFrozenBody* Body = FrozenBodies.Find(Actor))
+	if (UTemporalDilationSubsystem* DilationSubsystem = UTemporalDilationSubsystem::Get(this))
 	{
-		if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Actor->GetRootComponent()))
-		{
-			Root->SetSimulatePhysics(true);
-			Root->SetPhysicsLinearVelocity(Body->LinearVelocity);
-			Root->SetPhysicsAngularVelocityInDegrees(Body->AngularVelocity);
-		}
-		FrozenBodies.Remove(Actor);
+		DilationSubsystem->Release(Actor, this);
 	}
-	else if (const FSlowedBody* Slowed = SlowedBodies.Find(Actor))
+
+	// La burbujita de Detener existe solo para su objetivo: si sale (por ejemplo, lo rebobinas con R), se acaba.
+	if (bHasOnlyTarget && Actor == OnlyTarget.Get() && !IsActorBeingDestroyed())
 	{
-		if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Actor->GetRootComponent()))
-		{
-			Root->SetEnableGravity(Slowed->bHadGravity);
-			// Si el Registro Temporal lo está rebobinando, la física está apagada: no tocamos la velocidad.
-			if (Root->IsSimulatingPhysics())
-			{
-				Root->SetPhysicsLinearVelocity(Root->GetPhysicsLinearVelocity() / Dilation);
-				Root->SetPhysicsAngularVelocityInDegrees(Root->GetPhysicsAngularVelocityInDegrees() / Dilation);
-			}
-		}
-		SlowedBodies.Remove(Actor);
+		Destroy();
 	}
 }

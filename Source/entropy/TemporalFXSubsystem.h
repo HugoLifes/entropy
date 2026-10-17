@@ -39,6 +39,30 @@ struct ENTROPY_API FTemporalPulseSet
 	static float StrengthAt(const FTemporalPulse& Pulse);
 };
 
+/** Un campo de tiempo detenido (una burbuja): todo lo que quede adentro se ve "congelado". */
+struct FTemporalField
+{
+	uint32 Id = 0;
+	FVector Center = FVector::ZeroVector;
+	float Radius = 0.f;
+	/** 0..1: qué tan congelado se ve (1 = tiempo detenido, menos = cámara lenta). */
+	float Strength = 1.f;
+	/** Orden de llegada (para soltar el más viejo si hay demasiados). */
+	uint64 Serial = 0;
+};
+
+/** Lógica pura de los campos (probada sin mundo). El material tiene lugar para 2. */
+struct ENTROPY_API FTemporalFieldSet
+{
+	static constexpr int32 MaxFields = 2;
+	TArray<FTemporalField> Fields;
+	uint64 NextSerial = 1;
+
+	/** Agrega o actualiza el campo de ese dueño. Si ya hay 2 de otros dueños, reemplaza el más viejo. */
+	void Set(uint32 Id, const FVector& Center, float Radius, float Strength);
+	void Remove(uint32 Id);
+};
+
 UCLASS()
 class ENTROPY_API UTemporalFXSubsystem : public UTickableWorldSubsystem
 {
@@ -54,6 +78,13 @@ public:
 	/** Aura de distorsión siguiendo a un actor (Strength 0 o Target nulo = apagar). */
 	void SetAura(AActor* Target, float Strength);
 
+	/**
+	 * Campo de tiempo detenido de una esfera del mundo (la burbuja). Lo de adentro se ve desaturado y frío,
+	 * y el borde dobla la imagen. Owner identifica el campo: llamarlo cada frame lo actualiza.
+	 */
+	void SetField(const UObject* Owner, const FVector& Center, float Radius, float Strength);
+	void ClearField(const UObject* Owner);
+
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
@@ -63,6 +94,7 @@ private:
 	void ApplyToMaterial(bool& bOutAnyActive);
 
 	FTemporalPulseSet Pulses;
+	FTemporalFieldSet Fields;
 	TWeakObjectPtr<AActor> AuraTarget;
 	float AuraStrength = 0.f;
 	/** Última fuerza pedida: el aura se apaga suave desde ahí. */

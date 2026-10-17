@@ -27,6 +27,8 @@ namespace TemporalFX
 	ENTROPY_API UMaterialInterface* DistortionMaterial();
 	/** Polvo translúcido de bordes suaves para InstancedStaticMesh (/Game/Entropia/Materiales/M_TemporalDust). */
 	ENTROPY_API UMaterialInstanceDynamic* MakeDust(UObject* Outer, const FLinearColor& Color);
+	/** Esfera de campo con borde brillante (Fresnel), dos caras (/Game/Entropia/Materiales/M_TemporalField). */
+	ENTROPY_API UMaterialInstanceDynamic* MakeField(UObject* Outer, const FLinearColor& Color);
 	ENTROPY_API void ApplyToAllSlots(UMeshComponent* Mesh, UMaterialInterface* Material);
 	/** Estallido de partículas (Niagara). No hace nada si la plantilla no carga. */
 	ENTROPY_API void Burst(const UObject* WorldContext, const FVector& Location, const FLinearColor& Color, float Scale = 1.f);
