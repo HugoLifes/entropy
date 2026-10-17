@@ -170,9 +170,19 @@ float UTemporalDilationSubsystem::GetDilation(const AActor* Actor) const
 	return Actor ? Actors.Get(Actor) : 1.f;
 }
 
+bool UTemporalDilationSubsystem::IsFrozenRate(float OwnDilation, float GlobalDilation, bool bIsPlayer)
+{
+	return OwnDilation < FrozenBelow || (!bIsPlayer && GlobalDilation < FrozenBelow);
+}
+
+bool UTemporalDilationSubsystem::IsFrozen(const AActor* Actor) const
+{
+	return Actor && IsFrozenRate(GetDilation(Actor), GetGlobalDilation(), Actor == GetPlayer());
+}
+
 void UTemporalDilationSubsystem::RequestGlobal(const void* Source, float WorldDilation)
 {
-	if (Global.Request(this, Source, FMath::Clamp(WorldDilation, 0.01f, 1.f)))
+	if (Global.Request(this, Source, FMath::Clamp(WorldDilation, 0.0005f, 1.f)))
 	{
 		UGameplayStatics::SetGlobalTimeDilation(this, GetGlobalDilation());
 		RefreshAll();

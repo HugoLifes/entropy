@@ -6,6 +6,7 @@
 #include "EntropiaCoverComponent.h"
 #include "EntropiaMeleeComponent.h"
 #include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -91,6 +92,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		Cover = TemporalFX::FindOrAddComponent<UEntropiaCoverComponent>(Pawn, TEXT("Cover"));
 		Melee = TemporalFX::FindOrAddComponent<UEntropiaMeleeComponent>(Pawn, TEXT("Melee"));
 		Grab = TemporalFX::FindOrAddComponent<UEntropiaGrabComponent>(Pawn, TEXT("Grab"));
+		WorldStop = TemporalFX::FindOrAddComponent<UTemporalWorldStopComponent>(Pawn, TEXT("WorldStop"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
@@ -186,6 +188,12 @@ void UEntropiaPlayerPowers::ClearEchoes()
 
 void UEntropiaPlayerPowers::SpawnBubble()
 {
+	// Nivel 2: el mundo entero se detiene (Star Platinum: The World).
+	if (TimeStopLevel >= 2 && WorldStop)
+	{
+		WorldStop->Start();
+		return;
+	}
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
 	if (!Pawn)
 	{
@@ -253,8 +261,23 @@ void UEntropiaPlayerPowers::ToggleOverdrive()
 	}
 }
 
+void UEntropiaPlayerPowers::CycleTimeStopLevel()
+{
+	TimeStopLevel = TimeStopLevel >= 2 ? 1 : 2;
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1008, 3.f, FColor(200, 160, 255),
+			TimeStopLevel >= 2 ? TEXT("Detener el tiempo: NIVEL 2 (Q detiene todo el mundo)") : TEXT("Detener el tiempo: NIVEL 1 (Q = burbuja)"));
+	}
+}
+
 void UEntropiaPlayerPowers::EndForTeleport()
 {
+	// Teletransportarte o morir corta el mundo detenido (nunca se queda congelado ni sin color).
+	if (WorldStop)
+	{
+		WorldStop->Stop();
+	}
 	if (Parkour)
 	{
 		Parkour->Cancel();

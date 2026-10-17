@@ -54,6 +54,7 @@ private:
 	void OnSprintReleased();
 	void OnCrouch();
 	void OnGrab();
+	void OnTimeStopLevel();
 
 	UPROPERTY()
 	TObjectPtr<UEntropiaPlayerPowers> Powers;

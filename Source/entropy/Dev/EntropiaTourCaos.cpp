@@ -4,6 +4,7 @@
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
 #include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
 #include "TemporalCombatRoom.h"
 #include "TemporalArmedDummy.h"
 #include "TemporalPhysicsLab.h"
@@ -558,6 +559,43 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_tras_teletransporte agarrando=%d modo=%d"), Powers->Grab && Powers->Grab->IsHolding() ? 1 : 0,
 			Character ? static_cast<int32>(Character->GetCharacterMovement()->MovementMode) : -1);
+	});
+	// Fase 3b · Mundo detenido raro: con Sobremarcha y reflejo encima, morir a la mitad, teletransportarse a la mitad.
+	auto LogWorld = [this](const TCHAR* Name)
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s activo=%d global=%.2f jugador=%.2f stencil=%d"), Name,
+			Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0, Dilation ? Dilation->GetGlobalDilation() : -1.f,
+			Character ? Character->CustomTimeDilation : -1.f, Character && Character->GetMesh()->bRenderCustomDepth ? 1 : 0);
+	};
+	Add(TEXT("mundo_con_todo"), 0.8f, [this]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		if (Powers->Dash) { Powers->Dash->StartReflex(); }
+		Powers->SpawnBubble();
+		Powers->SpawnBubble();
+	});
+	Add(TEXT("mundo_muere"), 0.5f, [this, LogWorld]
+	{
+		LogWorld(TEXT("mundo_con_todo"));
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("mundo_muere_revisa"), 0.4f, [this, LogWorld]
+	{
+		LogWorld(TEXT("mundo_tras_morir"));
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		Powers->SpawnBubble();
+	});
+	Add(TEXT("mundo_teletransporte"), 0.3f, [this] { Rooms->GoToRoom(6); });
+	Add(TEXT("mundo_teletransporte_revisa"), 0.5f, [this, LogWorld]
+	{
+		LogWorld(TEXT("mundo_tras_teletransporte"));
+		Powers->CycleTimeStopLevel();
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

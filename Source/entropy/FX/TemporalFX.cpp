@@ -50,6 +50,10 @@ namespace
 	const TCHAR* FieldPackage = TEXT("/Game/Entropia/Materiales/M_TemporalField");
 	const TCHAR* FieldObject = TEXT("/Game/Entropia/Materiales/M_TemporalField.M_TemporalField");
 
+	// Detener nivel 2 (Star Platinum: The World): onda en negativo, mundo gris e índigo, el jugador a color (Custom Stencil).
+	const TCHAR* WorldStopPackage = TEXT("/Game/Entropia/Materiales/M_TemporalWorldStop");
+	const TCHAR* WorldStopObject = TEXT("/Game/Entropia/Materiales/M_TemporalWorldStop.M_TemporalWorldStop");
+
 #if WITH_EDITOR
 	/** Compila, registra y guarda en disco un material recién creado. */
 	void SaveNewMaterial(UPackage* Package, UMaterial* Material, const TCHAR* PackageName)
@@ -333,6 +337,99 @@ return Col + Dummy.rgb * 0.0;
 		SaveNewMaterial(Package, Material, FieldPackage);
 	}
 
+	/**
+	 * Crea M_TemporalWorldStop: post-process (después del tonemapping) para Detener nivel 2.
+	 *   StopCenter (xyz) = de dónde sale la onda · StopRadius = radio actual · StopFill = 0..1 todo congelado (cielo incluido)
+	 *   StopFlash = 0..1 destello en negativo del impacto · StopStrength = 0..1 cuánto se nota todo.
+	 * Lo que está dentro de la onda queda gris metálico e índigo; el frente de la onda, en negativo naranja; lo que tiene
+	 * Custom Stencil 1 (el jugador) conserva su color.
+	 */
+	void CreateWorldStopMaterialIfMissing()
+	{
+		if (FPackageName::DoesPackageExist(WorldStopPackage))
+		{
+			return;
+		}
+
+		UPackage* Package = CreatePackage(WorldStopPackage);
+		UMaterial* Material = NewObject<UMaterial>(Package, TEXT("M_TemporalWorldStop"), RF_Public | RF_Standalone);
+		Material->MaterialDomain = MD_PostProcess;
+		Material->BlendableLocation = BL_SceneColorAfterTonemapping;
+
+		UMaterialExpressionCustom* Custom = NewObject<UMaterialExpressionCustom>(Material);
+		Custom->Material = Material;
+		Custom->Description = TEXT("TemporalWorldStop");
+		Custom->OutputType = CMOT_Float3;
+		Custom->Code = TEXT(R"HLSL(
+float2 ViewUV = GetViewportUV(Parameters);
+float3 Col = SceneTextureLookup(ClampSceneTextureUV(ViewportUVToSceneTextureUV(ViewUV, 14), 14), 14, true).rgb;
+float Strength = saturate(StopParams.w);
+float Radius = StopParams.x;
+float Fill = saturate(StopParams.y);
+float Flash = saturate(StopParams.z);
+float Dist = distance(WorldPos, StopCenter.xyz);
+float Inside = max(1.0 - smoothstep(Radius - 60.0, Radius, Dist), Fill);
+float Front = exp(-pow((Dist - Radius) / 140.0, 2.0)) * (1.0 - Fill);
+float Lum = dot(Col, float3(0.299, 0.587, 0.114));
+// Mundo congelado: gris metálico con tinte índigo, un poco más oscuro.
+float3 Frozen = lerp(float3(Lum, Lum, Lum) * 0.9, float3(0.32, 0.34, 0.62) * (Lum * 1.7 + 0.04), 0.5);
+// Impacto: negativo de foto con cielo naranja y amarillo (las sombras se vuelven blancas).
+float3 Negative = (1.0 - Col) * float3(1.0, 0.78, 0.38);
+float3 Out = lerp(Col, Frozen, Inside * Strength);
+Out = lerp(Out, Negative, saturate((Front + Flash) * Strength));
+// El jugador (Custom Stencil 1) conserva su color.
+float Keep = Stencil.r > 0.5 ? 1.0 : 0.0;
+return lerp(Out, Col, Keep);
+)HLSL");
+
+		auto AddVectorInput = [Material, Custom](const TCHAR* Name)
+		{
+			UMaterialExpressionVectorParameter* Param = NewObject<UMaterialExpressionVectorParameter>(Material);
+			Param->Material = Material;
+			Param->ParameterName = Name;
+			Param->DefaultValue = FLinearColor(0.f, 0.f, 0.f, 0.f);
+			Material->GetExpressionCollection().AddExpression(Param);
+			FCustomInput Input;
+			Input.InputName = Name;
+			Input.Input.Connect(5, Param);
+			Custom->Inputs.Add(Input);
+		};
+		Custom->Inputs.Reset();
+		AddVectorInput(TEXT("StopCenter"));
+		// x = radio, y = relleno, z = destello, w = fuerza.
+		AddVectorInput(TEXT("StopParams"));
+
+		UMaterialExpressionWorldPosition* World = NewObject<UMaterialExpressionWorldPosition>(Material);
+		World->Material = Material;
+		Material->GetExpressionCollection().AddExpression(World);
+		FCustomInput WorldInput;
+		WorldInput.InputName = TEXT("WorldPos");
+		WorldInput.Input.Connect(0, World);
+		Custom->Inputs.Add(WorldInput);
+
+		UMaterialExpressionSceneTexture* StencilTexture = NewObject<UMaterialExpressionSceneTexture>(Material);
+		StencilTexture->Material = Material;
+		StencilTexture->SceneTextureId = PPI_CustomStencil;
+		Material->GetExpressionCollection().AddExpression(StencilTexture);
+		FCustomInput StencilInput;
+		StencilInput.InputName = TEXT("Stencil");
+		StencilInput.Input.Connect(0, StencilTexture);
+		Custom->Inputs.Add(StencilInput);
+
+		UMaterialExpressionSceneTexture* Scene = NewObject<UMaterialExpressionSceneTexture>(Material);
+		Scene->Material = Material;
+		Scene->SceneTextureId = PPI_PostProcessInput0;
+		Material->GetExpressionCollection().AddExpression(Scene);
+		FCustomInput DummyInput;
+		DummyInput.InputName = TEXT("Dummy");
+		DummyInput.Input.Connect(0, Scene);
+		Custom->Inputs.Add(DummyInput);
+
+		Material->GetExpressionCollection().AddExpression(Custom);
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Custom);
+		SaveNewMaterial(Package, Material, WorldStopPackage);
+	}
+
 	// Corre una vez al terminar de arrancar el motor con el editor (también con -game desde el editor, para el tour).
 	FDelayedAutoRegisterHelper GCreateEntropiaMaterials(EDelayedRegisterRunPhase::EndOfEngineInit, []
 	{
@@ -344,6 +441,7 @@ return Col + Dummy.rgb * 0.0;
 		CreateDistortionMaterialIfMissing();
 		CreateDustMaterialIfMissing();
 		CreateFieldMaterialIfMissing();
+		CreateWorldStopMaterialIfMissing();
 	});
 #endif
 
@@ -389,6 +487,16 @@ UMaterialInterface* TemporalFX::DistortionMaterial()
 	if (!Cached.IsValid())
 	{
 		Cached = LoadObject<UMaterialInterface>(nullptr, DistortionObject, nullptr, LOAD_NoWarn);
+	}
+	return Cached.Get();
+}
+
+UMaterialInterface* TemporalFX::WorldStopMaterial()
+{
+	static TWeakObjectPtr<UMaterialInterface> Cached;
+	if (!Cached.IsValid())
+	{
+		Cached = LoadObject<UMaterialInterface>(nullptr, WorldStopObject, nullptr, LOAD_NoWarn);
 	}
 	return Cached.Get();
 }

@@ -8,6 +8,8 @@
 #include "TemporalArmedDummy.h"
 #include "EntropiaMeleeComponent.h"
 #include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
+#include "TemporalDilation.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
@@ -805,6 +807,42 @@ void UEntropiaTourComponent::BuildNormalSteps()
 	{
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR soltar sometido=%d aturdido=%d desarmado=%d"), Dummy(1) && Dummy(1)->IsSubdued() ? 1 : 0,
 			Dummy(1) && Dummy(1)->IsStaggered() ? 1 : 0, Dummy(1) && !Dummy(1)->IsArmed() ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 3b · Detener nivel 2 (The World): todo se detiene menos tú; el remate a un congelado sale al volver el tiempo.
+	Add(TEXT("mundo_prepara"), 0.8f, [this, M, StandAt]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (ATemporalMannequin* Target = M(2))
+		{
+			StandAt(Target->GetActorLocation() + Target->GetActorForwardVector() * 140.f, Target->GetActorLocation());
+		}
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("mundo_impacto"), 0.2f, [this]
+	{
+		Powers->SpawnBubble();
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR mundo_detenido activo=%d global=%.4f"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f);
+	});
+	Add(TEXT("mundo_congelado"), 1.5f, [this]
+	{
+		Powers->PrimaryAction();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR mundo_remate tipo=%d"), Powers->Takedown ? static_cast<int32>(Powers->Takedown->GetLastKind()) : -1);
+	});
+	Add(TEXT("mundo_regresa"), 2.6f, [this, M]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR mundo_durante golpe_guardado=%d"), M(2) && M(2)->HasPendingHit() ? 1 : 0);
+	});
+	Add(TEXT("mundo_fin"), 0.8f, [this, M]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR mundo_fin activo=%d global=%.2f tirado=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, M(2) && M(2)->IsKnockedDown() ? 1 : 0);
+		Powers->CycleTimeStopLevel();
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]

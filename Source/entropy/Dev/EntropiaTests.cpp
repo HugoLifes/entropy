@@ -25,6 +25,7 @@
 #include "TemporalArmedDummy.h"
 #include "EntropiaMeleeComponent.h"
 #include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -773,6 +774,35 @@ bool FEntropiaGrabCondition::RunTest(const FString& Parameters)
 	TestFalse(TEXT("A tu espalda: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(-120.f, 0.f, 0.f), true));
 	TestFalse(TEXT("Tirado: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(120.f, 0.f, 0.f), false));
 	TestTrue(TEXT("Un poco de lado (40°): sí"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(100.f, 84.f, 0.f), true));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Detener nivel 2 (The World)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaWorldStopWave, "Entropia.WorldStop.WaveShape", EntropiaTestFlags::Flags)
+bool FEntropiaWorldStopWave::RunTest(const FString& Parameters)
+{
+	const float Duration = 4.f;
+	const float Max = 6000.f;
+	TestEqual(TEXT("Al empezar la onda no ha salido"), EntropiaWorldStop::WaveRadius(0.f, Duration, Max), 0.f, 1.f);
+	TestEqual(TEXT("A 0.8 s llega al máximo"), EntropiaWorldStop::WaveRadius(0.8f, Duration, Max), Max, 1.f);
+	TestEqual(TEXT("A mitad se mantiene"), EntropiaWorldStop::WaveRadius(2.f, Duration, Max), Max, 1.f);
+	const float Returning = EntropiaWorldStop::WaveRadius(3.7f, Duration, Max);
+	TestTrue(TEXT("Al final regresa hacia ti"), Returning > 0.f && Returning < Max);
+	TestEqual(TEXT("Al terminar, cero"), EntropiaWorldStop::WaveRadius(4.f, Duration, Max), 0.f, 1.f);
+	TestEqual(TEXT("Destello en negativo al empezar"), EntropiaWorldStop::Flash(0.f), 1.f, 0.01f);
+	TestEqual(TEXT("El destello se apaga en 0.25 s"), EntropiaWorldStop::Flash(0.3f), 0.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationWorldStopFreezes, "Entropia.Dilation.WorldStopFreezesOthers", EntropiaTestFlags::Flags)
+bool FEntropiaDilationWorldStopFreezes::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Mundo detenido: los demás cuentan como congelados"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.001f, false));
+	TestFalse(TEXT("Pero el jugador no"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.001f, true));
+	TestFalse(TEXT("Sobremarcha (0.25) no congela"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.25f, false));
+	TestTrue(TEXT("Burbuja: congelado aunque el mundo vaya normal"), UTemporalDilationSubsystem::IsFrozenRate(0.f, 1.f, false));
 	return true;
 }
 

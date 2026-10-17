@@ -25,6 +25,7 @@ namespace EntropiaHUD
 		if (Power == TEXT("Sobremarcha")) { return FLinearColor(0.2f, 0.9f, 0.8f); }
 		if (Power == TEXT("Detener")) { return FLinearColor(0.6f, 0.92f, 1.f); }
 		if (Power == TEXT("OjoLento")) { return FLinearColor(0.75f, 0.6f, 1.f); }
+		if (Power == TEXT("MundoDetenido")) { return FLinearColor(1.f, 0.78f, 0.25f); }
 		return FLinearColor(0.9f, 0.9f, 0.9f);
 	}
 }
