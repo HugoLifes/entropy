@@ -1,6 +1,7 @@
 // ENTROPÍA · Sobremarcha
 
 #include "OverdriveComponent.h"
+#include "TemporalDilation.h"
 #include "TemporalFXSubsystem.h"
 #include "InverseStepComponent.h"
 #include "TemporalEnergyComponent.h"
@@ -84,8 +85,11 @@ bool UOverdriveComponent::StartOverdrive()
 
 	bOverdrive = true;
 	TrailTimer = 0.f;
-	UGameplayStatics::SetGlobalTimeDilation(this, WorldDilation);
-	GetOwner()->CustomTimeDilation = 1.f / WorldDilation;
+	// El árbitro pone el mundo lento y te compensa a ti (si otro poder lo pone más lento, gana ese).
+	if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
+	{
+		Dilation->RequestGlobal(this, WorldDilation);
+	}
 	Energy->SetActivePower(TEXT("Sobremarcha"));
 	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(TrailColor.R, TrailColor.G, TrailColor.B), 0.8f);
 	// Onda grande hacia afuera: el mundo "se estira" al entrar en Sobremarcha.
@@ -107,8 +111,10 @@ void UOverdriveComponent::StopOverdrive()
 	{
 		FX->Pulse(GetOwner()->GetActorLocation(), -0.02f, 0.4f, 0.3f);
 	}
-	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
-	GetOwner()->CustomTimeDilation = 1.f;
+	if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
+	{
+		Dilation->ReleaseGlobal(this);
+	}
 	if (Energy && Energy->GetActivePower() == TEXT("Sobremarcha"))
 	{
 		Energy->SetActivePower(NAME_None);

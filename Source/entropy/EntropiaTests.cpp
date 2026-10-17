@@ -13,6 +13,7 @@
 #include "TemporalDebrisComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalTrailComponent.h"
+#include "TemporalDilation.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -415,6 +416,50 @@ bool FEntropiaFieldSetCapsAndReplacesOldest::RunTest(const FString& Parameters)
 		bHasFirst |= Field.Id == 1;
 	}
 	TestFalse(TEXT("Si hay demasiadas burbujas, la más vieja deja de pintarse"), bHasFirst);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Árbitro del tiempo: cada poder pide una velocidad y gana la más lenta
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationSlowestWins, "Entropia.Dilation.SlowestWins", EntropiaTestFlags::Flags)
+bool FEntropiaDilationSlowestWins::RunTest(const FString& Parameters)
+{
+	FTemporalDilationLedger Ledger;
+	int32 Key = 0, OjoLento = 0, Burbuja = 0;
+	TestTrue(TEXT("Primer pedido cambia la velocidad"), Ledger.Request(&Key, &OjoLento, 0.25f));
+	TestEqual(TEXT("Ojo lento: 0.25"), Ledger.Get(&Key), 0.25f, 0.0001f);
+	Ledger.Request(&Key, &Burbuja, 0.f);
+	TestEqual(TEXT("La burbuja congela: gana la más lenta"), Ledger.Get(&Key), 0.f, 0.0001f);
+	TestTrue(TEXT("Soltar la burbuja cambia la velocidad"), Ledger.Release(&Key, &Burbuja));
+	TestEqual(TEXT("Vuelve la del Ojo lento, no 1"), Ledger.Get(&Key), 0.25f, 0.0001f);
+	Ledger.Release(&Key, &OjoLento);
+	TestEqual(TEXT("Sin pedidos: tiempo normal"), Ledger.Get(&Key), 1.f, 0.0001f);
+	TestFalse(TEXT("Y la clave ya no se guarda"), Ledger.Has(&Key));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationReleaseSource, "Entropia.Dilation.ReleaseSource", EntropiaTestFlags::Flags)
+bool FEntropiaDilationReleaseSource::RunTest(const FString& Parameters)
+{
+	FTemporalDilationLedger Ledger;
+	int32 K1 = 0, K2 = 0, A = 0, B = 0;
+	Ledger.Request(&K1, &A, 0.5f);
+	Ledger.Request(&K2, &A, 0.f);
+	Ledger.Request(&K2, &B, 0.3f);
+	const TArray<const void*> Changed = Ledger.ReleaseSource(&A);
+	TestEqual(TEXT("Cambiaron las dos claves"), Changed.Num(), 2);
+	TestEqual(TEXT("K1 vuelve a 1"), Ledger.Get(&K1), 1.f, 0.0001f);
+	TestEqual(TEXT("K2 queda con el pedido de B"), Ledger.Get(&K2), 0.3f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationPlayerCompensation, "Entropia.Dilation.PlayerCompensation", EntropiaTestFlags::Flags)
+bool FEntropiaDilationPlayerCompensation::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Mundo a 0.25: el jugador va x4 para verse normal"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 0.25f), 4.f, 0.0001f);
+	TestEqual(TEXT("Jugador congelado sigue congelado"), UTemporalDilationSubsystem::PlayerTimeFor(0.f, 0.25f), 0.f, 0.0001f);
+	TestEqual(TEXT("Sin cámara lenta: 1"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 1.f), 1.f, 0.0001f);
 	return true;
 }
 

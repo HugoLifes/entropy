@@ -1,6 +1,8 @@
 // ENTROPÍA · Brecha
 // Una esfera donde el tiempo corre distinto: 0 = congelado, 0.2 = cámara lenta, 3 = acelerado.
 // Trae su propia esfera translúcida (Visual) que crece al aparecer y se encoge al terminar.
+// Pide su velocidad al árbitro del tiempo (UTemporalDilationSubsystem): si dos efectos tocan al mismo actor, gana el más lento.
+// Con OnlyTarget es la burbujita de "Detener": solo afecta a ese actor y desaparece si él sale.
 
 #pragma once
 
@@ -40,6 +42,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	bool bAffectPlayer = false;
 
+	/** Si se pone (antes de terminar de aparecer), solo afecta a este actor; si él sale o desaparece, la burbuja también. */
+	TWeakObjectPtr<AActor> OnlyTarget;
+
+	/** Distorsión de pantalla dentro de la burbuja (las burbujitas de Detener no la usan: solo hay 2 lugares). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
+	bool bDrawField = true;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -54,23 +63,10 @@ private:
 	void Affect(AActor* Actor);
 	void Release(AActor* Actor);
 
-	struct FFrozenBody
-	{
-		FVector LinearVelocity = FVector::ZeroVector;
-		FVector AngularVelocity = FVector::ZeroVector;
-	};
-
-	/** Cuerpo con física en cámara lenta (o acelerado): le quitamos la gravedad y le aplicamos una escalada. */
-	struct FSlowedBody
-	{
-		bool bHadGravity = true;
-	};
-
 	float Age = 0.f;
+	bool bHasOnlyTarget = false;
 
 	TSet<TWeakObjectPtr<AActor>> Affected;
-	TMap<TWeakObjectPtr<AActor>, FFrozenBody> FrozenBodies;
-	TMap<TWeakObjectPtr<AActor>, FSlowedBody> SlowedBodies;
 
 public:
 	virtual void Tick(float DeltaTime) override;
