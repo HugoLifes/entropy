@@ -106,7 +106,7 @@ void UTemporalDebrisComponent::EnsureComponents()
 
 	ChipMesh = MakeISM(Cube, TEXT("DebrisChips"));
 	DustMesh = MakeISM(Sphere, TEXT("DebrisDust"));
-	TemporalFX::ApplyToAllSlots(DustMesh, TemporalFX::MakeTranslucent(this, DustColor));
+	TemporalFX::ApplyToAllSlots(DustMesh, TemporalFX::MakeDust(this, DustColor));
 }
 
 void UTemporalDebrisComponent::Burst(const FVector& ImpactPoint, const FVector& Direction, const FLinearColor& ChipColor, float FloorZ)

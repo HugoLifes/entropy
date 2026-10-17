@@ -25,6 +25,8 @@ namespace TemporalFX
 	ENTROPY_API UMaterialInstanceDynamic* MakeSolid(UObject* Outer, const FLinearColor& Color);
 	/** Post-process de distorsión del tiempo (/Game/Entropia/Materiales/M_TemporalDistortion). Nulo si aún no existe. */
 	ENTROPY_API UMaterialInterface* DistortionMaterial();
+	/** Polvo translúcido de bordes suaves para InstancedStaticMesh (/Game/Entropia/Materiales/M_TemporalDust). */
+	ENTROPY_API UMaterialInstanceDynamic* MakeDust(UObject* Outer, const FLinearColor& Color);
 	ENTROPY_API void ApplyToAllSlots(UMeshComponent* Mesh, UMaterialInterface* Material);
 	/** Estallido de partículas (Niagara). No hace nada si la plantilla no carga. */
 	ENTROPY_API void Burst(const UObject* WorldContext, const FVector& Location, const FLinearColor& Color, float Scale = 1.f);

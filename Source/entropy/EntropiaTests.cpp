@@ -12,6 +12,7 @@
 #include "TemporalFracture.h"
 #include "TemporalDebrisComponent.h"
 #include "TemporalFXSubsystem.h"
+#include "TemporalTrailComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -308,6 +309,18 @@ bool FEntropiaPulseExpires::RunTest(const FString& Parameters)
 	Set.Add(P);
 	Set.Advance(0.51f);
 	TestEqual(TEXT("Una onda vencida desaparece"), Set.Pulses.Num(), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Tour (Fase 2): la estela no apila copias si estás quieto
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaTrailSkipsWhenStill, "Entropia.Trail.SkipsWhenStill", EntropiaTestFlags::Flags)
+bool FEntropiaTrailSkipsWhenStill::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("La primera copia siempre sale"), UTemporalTrailComponent::ShouldEmit(false, FVector::ZeroVector, FVector::ZeroVector, 25.f));
+	TestFalse(TEXT("Quieto (10 cm) no deja otra copia encima de ti"), UTemporalTrailComponent::ShouldEmit(true, FVector::ZeroVector, FVector(10.f, 0.f, 0.f), 25.f));
+	TestTrue(TEXT("Moviéndote (40 cm) sí deja copia"), UTemporalTrailComponent::ShouldEmit(true, FVector::ZeroVector, FVector(40.f, 0.f, 0.f), 25.f));
 	return true;
 }
 

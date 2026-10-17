@@ -32,10 +32,19 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "CrumblePlatform.h"
+#include "TemporalProjectile.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
+#include "GenericPlatform/GenericPlatformMisc.h"
 
 ATemporalSandbox::ATemporalSandbox()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Solo tickea durante el modo tour.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
 }
 
@@ -138,6 +147,11 @@ void ATemporalSandbox::Setup()
 		Params.Owner = this;
 		const FTransform LabTransform(FRotator(0.f, GetActorRotation().Yaw, 0.f), GetActorLocation() + GetActorRotation().RotateVector(PhysicsLabOffset));
 		PhysicsLab = GetWorld()->SpawnActor<ATemporalPhysicsLab>(ATemporalPhysicsLab::StaticClass(), LabTransform, Params);
+	}
+
+	if (FParse::Param(FCommandLine::Get(), TEXT("EntropiaTour")))
+	{
+		StartTour();
 	}
 }
 
@@ -478,4 +492,231 @@ void ATemporalSandbox::OnBubble()
 void ATemporalSandbox::OnRespawnCubes()
 {
 	SpawnCubes();
+}
+
+// ---------------------------------------------------------------------------
+// Modo tour: la IA prueba el juego sola (capturas + FPS por paso)
+
+void ATemporalSandbox::TourRewindAll(bool bStart)
+{
+	for (AActor* Actor : GatherRewindables())
+	{
+		if (UTemporalRecorderComponent* Recorder = Actor->FindComponentByClass<UTemporalRecorderComponent>())
+		{
+			if (bStart)
+			{
+				Recorder->StartRewind();
+			}
+			else
+			{
+				Recorder->StopRewind();
+			}
+		}
+	}
+}
+
+void ATemporalSandbox::StartTour()
+{
+	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR start"));
+	auto Add = [this](const TCHAR* Name, float Seconds, TFunction<void()> Action)
+	{
+		TourSteps.Add({ Name, MoveTemp(Action), Seconds });
+	};
+
+	// Bala más reciente en el mundo (la que acaba de disparar la torreta).
+	auto NewestBullet = [this]() -> ATemporalProjectile*
+	{
+		ATemporalProjectile* Best = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			if (!Best || It->GetGameTimeSinceCreation() < Best->GetGameTimeSinceCreation())
+			{
+				Best = *It;
+			}
+		}
+		return Best;
+	};
+	auto Player = [this]() { return Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0)); };
+	auto PlaceInLab = [this, Player](const FVector& Local)
+	{
+		if (PhysicsLab && Player())
+		{
+			Player()->SetActorLocation(PhysicsLab->GetActorTransform().TransformPosition(Local), false, nullptr, ETeleportType::TeleportPhysics);
+			if (AController* Controller = Player()->GetController())
+			{
+				Controller->SetControlRotation(FRotator(-10.f, PhysicsLab->GetActorRotation().Yaw, 0.f));
+			}
+		}
+	};
+
+	Add(TEXT("inicio"), 2.5f, [] {});
+	Add(TEXT("sala4"), 2.f, [this] { OnRoom4(); });
+	Add(TEXT("disparo"), 0.9f, [this] { OnFire(); });
+	Add(TEXT("escombros"), 1.4f, [] {});
+	Add(TEXT("invertir_bala"), 2.6f, [this, NewestBullet]
+	{
+		if (ATemporalProjectile* Bullet = NewestBullet(); Bullet && PlayerInversion)
+		{
+			PlayerInversion->BeginInversionOn(Bullet->Recorder);
+		}
+	});
+	Add(TEXT("rearmado"), 1.6f, [this] { if (PlayerInversion) { PlayerInversion->EndInversion(); } });
+	Add(TEXT("romper_caja"), 1.4f, [this]
+	{
+		// Una caja que no esté en la línea de tiro.
+		for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
+		{
+			const ATemporalTurret* Turret = PhysicsLab ? PhysicsLab->GetTurret() : nullptr;
+			const FVector From = Turret ? Turret->GetActorLocation() : FVector::ZeroVector;
+			const FVector To = Turret ? From + Turret->GetActorForwardVector() * 4000.f : FVector::ZeroVector;
+			if (!It->IsBroken() && Turret && !It->SegmentCrosses(From + FVector(0, 0, 60), To + FVector(0, 0, 60)))
+			{
+				It->Break(It->GetActorLocation() - FVector(0, 0, 30), FVector(0, 0, -1));
+				break;
+			}
+		}
+	});
+	Add(TEXT("shift_r"), 2.4f, [this] { TourRewindAll(true); });
+	Add(TEXT("shift_r_suelta"), 1.f, [this] { TourRewindAll(false); });
+	Add(TEXT("sobremarcha"), 2.6f, [this]
+	{
+		if (PlayerOverdrive)
+		{
+			PlayerOverdrive->StartOverdrive();
+		}
+		OnFire();
+	});
+	Add(TEXT("sobremarcha_off"), 1.2f, [this] { if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); } });
+	Add(TEXT("burbuja"), 2.4f, [this, PlaceInLab]
+	{
+		PlaceInLab(FVector(350.f, -150.f, 120.f));
+		OnBubble();
+		OnFire();
+	});
+	Add(TEXT("sala2"), 1.6f, [this, Player]
+	{
+		GoToRoom(1);
+		// Mirar hacia abajo, al vacío: así la captura muestra las plataformas.
+		if (ACharacter* Character = Player())
+		{
+			if (AController* Controller = Character->GetController())
+			{
+				Controller->SetControlRotation(FRotator(-28.f, Controller->GetControlRotation().Yaw, 0.f));
+			}
+		}
+	});
+	Add(TEXT("plataforma_cae"), 2.2f, [this]
+	{
+		if (Chamber && Chamber->GetPlatforms().Num() > 0 && IsValid(Chamber->GetPlatforms()[0]))
+		{
+			Chamber->GetPlatforms()[0]->Crumble();
+		}
+	});
+	Add(TEXT("invertir_plataforma"), 3.f, [this]
+	{
+		if (Chamber && Chamber->GetPlatforms().Num() > 0 && IsValid(Chamber->GetPlatforms()[0]) && PlayerInversion)
+		{
+			PlayerInversion->BeginInversionOn(Chamber->GetPlatforms()[0]->Recorder);
+		}
+	});
+	Add(TEXT("sala1_correr"), 1.4f, [this, Player]
+	{
+		if (PlayerInversion)
+		{
+			PlayerInversion->EndInversion();
+		}
+		GoToRoom(0);
+		if (ACharacter* Character = Player())
+		{
+			Character->LaunchCharacter(FVector(700.f, 250.f, 450.f), true, true);
+		}
+	});
+	Add(TEXT("paso_inverso"), 1.8f, [this] { if (PlayerInverseStep) { PlayerInverseStep->BeginInverseStep(); } });
+	Add(TEXT("eco"), 2.2f, [this]
+	{
+		if (PlayerInverseStep)
+		{
+			PlayerInverseStep->EndInverseStep();
+		}
+		OnEcho();
+	});
+
+	TourIndex = 0;
+	SetActorTickEnabled(true);
+	BeginTourStep();
+}
+
+void ATemporalSandbox::BeginTourStep()
+{
+	TourStepStart = FPlatformTime::Seconds();
+	bTourShotTaken = false;
+	TourFrames = 0;
+	TourFrameTime = 0.0;
+	TourMinFps = TNumericLimits<float>::Max();
+	// El primer frame de cada paso suele cargar cosas nuevas (teletransporte, efectos): no cuenta para el mínimo.
+	TourSkipMinFrames = 2;
+	if (TourSteps.IsValidIndex(TourIndex) && TourSteps[TourIndex].Action)
+	{
+		TourSteps[TourIndex].Action();
+	}
+}
+
+void ATemporalSandbox::FinishTourStep()
+{
+	const FEntropiaTourStep& Step = TourSteps[TourIndex];
+	const float AvgFps = TourFrameTime > 0.0 ? static_cast<float>(TourFrames / TourFrameTime) : 0.f;
+	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR step=%02d name=%s fps_avg=%.1f fps_min=%.1f"),
+		TourIndex, *Step.Name, AvgFps, TourMinFps == TNumericLimits<float>::Max() ? 0.f : TourMinFps);
+
+	++TourIndex;
+	if (TourSteps.IsValidIndex(TourIndex))
+	{
+		BeginTourStep();
+		return;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR done"));
+	SetActorTickEnabled(false);
+	TourIndex = INDEX_NONE;
+	FGenericPlatformMisc::RequestExit(false);
+}
+
+void ATemporalSandbox::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!TourSteps.IsValidIndex(TourIndex))
+	{
+		return;
+	}
+
+	// FPS con el tiempo real del frame (sin tope ni dilatación).
+	const double FrameTime = FApp::GetDeltaTime();
+	if (FrameTime > 0.0)
+	{
+		++TourFrames;
+		TourFrameTime += FrameTime;
+		// Los frames de la captura de pantalla son lentos por sí solos: no cuentan para el mínimo.
+		if (TourSkipMinFrames > 0)
+		{
+			--TourSkipMinFrames;
+		}
+		else
+		{
+			TourMinFps = FMath::Min(TourMinFps, static_cast<float>(1.0 / FrameTime));
+		}
+	}
+
+	const FEntropiaTourStep& Step = TourSteps[TourIndex];
+	const double Elapsed = FPlatformTime::Seconds() - TourStepStart;
+	if (!bTourShotTaken && Elapsed >= Step.Seconds * 0.6)
+	{
+		bTourShotTaken = true;
+		const FString File = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Tour"), FString::Printf(TEXT("Tour_%02d_%s.png"), TourIndex, *Step.Name));
+		FScreenshotRequest::RequestScreenshot(File, /*bShowUI=*/true, /*bAddFilenameSuffix=*/false);
+		TourSkipMinFrames = 3;
+	}
+	if (Elapsed >= Step.Seconds)
+	{
+		FinishTourStep();
+	}
 }

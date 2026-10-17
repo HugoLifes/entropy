@@ -44,12 +44,25 @@ void UTemporalTrailComponent::BuildPool(USkinnedAsset* Asset)
 	}
 }
 
+bool UTemporalTrailComponent::ShouldEmit(bool bHasPrevious, const FVector& PreviousLocation, const FVector& NewLocation, float MinMove)
+{
+	return !bHasPrevious || FVector::DistSquared(PreviousLocation, NewLocation) >= FMath::Square(MinMove);
+}
+
 void UTemporalTrailComponent::Emit(USkinnedAsset* Asset, const TArray<FTransform>& Pose, const FTransform& MeshWorldTransform, const FLinearColor& Color)
 {
 	if (!Asset || !GetOwner())
 	{
 		return;
 	}
+	// Quieto: no apilamos copias encima del cuerpo (se veía "transparente" en la Sobremarcha).
+	const FVector Location = MeshWorldTransform.GetLocation();
+	if (!ShouldEmit(bHasEmitted, LastEmitLocation, Location, MinMoveBetweenCopies))
+	{
+		return;
+	}
+	LastEmitLocation = Location;
+	bHasEmitted = true;
 	if (Slots.Num() == 0)
 	{
 		BuildPool(Asset);

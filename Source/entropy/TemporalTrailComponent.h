@@ -29,7 +29,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.05"))
 	float Life = 0.30f;
 
-	/** Deja una copia con esta pose (espacio de hueso) en esta posición del mundo. */
+	/** No deja una copia nueva si el cuerpo se movió menos que esto desde la anterior (evita apilar copias encima de ti). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0"))
+	float MinMoveBetweenCopies = 25.f;
+
+	/** ¿Toca dejar copia? (lógica pura, probada) */
+	static bool ShouldEmit(bool bHasPrevious, const FVector& PreviousLocation, const FVector& NewLocation, float MinMove);
+
+	/** Deja una copia con esta pose (espacio de hueso) en esta posición del mundo, si te moviste lo suficiente. */
 	void Emit(USkinnedAsset* Asset, const TArray<FTransform>& Pose, const FTransform& MeshWorldTransform, const FLinearColor& Color);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -47,6 +54,9 @@ private:
 	void BuildPool(USkinnedAsset* Asset);
 
 	TArray<FSlot> Slots;
+
+	FVector LastEmitLocation = FVector::ZeroVector;
+	bool bHasEmitted = false;
 
 	/** Mantiene vivos los componentes y materiales del pool. */
 	UPROPERTY()

@@ -18,6 +18,9 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionCustom.h"
+#include "Materials/MaterialExpressionFresnel.h"
+#include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionOneMinus.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionSceneTexture.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
@@ -36,6 +39,11 @@ namespace
 	// Post-process de distorsión del tiempo (ondas + aura). Lo maneja UTemporalFXSubsystem.
 	const TCHAR* DistortionPackage = TEXT("/Game/Entropia/Materiales/M_TemporalDistortion");
 	const TCHAR* DistortionObject = TEXT("/Game/Entropia/Materiales/M_TemporalDistortion.M_TemporalDistortion");
+
+	// Polvo de los escombros: translúcido con bordes suaves y permiso para InstancedStaticMesh
+	// (sin ese permiso el motor dibujaba el polvo con el material gris por defecto: bolas sólidas).
+	const TCHAR* DustPackage = TEXT("/Game/Entropia/Materiales/M_TemporalDust");
+	const TCHAR* DustObject = TEXT("/Game/Entropia/Materiales/M_TemporalDust.M_TemporalDust");
 
 #if WITH_EDITOR
 	/** Compila, registra y guarda en disco un material recién creado. */
@@ -137,7 +145,7 @@ for (int i = 0; i < 4; ++i)
 	Chroma += Mask * abs(Aura.w) * 0.6;
 }
 float2 OffBuf = Off * View.ViewSizeAndInvSize.xy * View.BufferSizeAndInvSize.zw;
-float Split = 0.25 + Chroma * 20.0;
+float Split = ChromaBase + Chroma * ChromaGain;
 float R = SceneTextureLookup(BufUV + OffBuf * (1.0 + Split), 14, false).r;
 float G = SceneTextureLookup(BufUV + OffBuf, 14, false).g;
 float B = SceneTextureLookup(BufUV + OffBuf * (1.0 - Split), 14, false).b;
@@ -175,6 +183,21 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		ThicknessInput.Input.Connect(0, Thickness);
 		Custom->Inputs.Add(ThicknessInput);
 
+		// Aberración de color ajustable sin regenerar el material (la primera versión era demasiado "arcoíris").
+		const TPair<const TCHAR*, float> ChromaParams[] = { { TEXT("ChromaBase"), 0.1f }, { TEXT("ChromaGain"), 6.f } };
+		for (const TPair<const TCHAR*, float>& Pair : ChromaParams)
+		{
+			UMaterialExpressionScalarParameter* Param = NewObject<UMaterialExpressionScalarParameter>(Material);
+			Param->Material = Material;
+			Param->ParameterName = Pair.Key;
+			Param->DefaultValue = Pair.Value;
+			Material->GetExpressionCollection().AddExpression(Param);
+			FCustomInput Input;
+			Input.InputName = Pair.Key;
+			Input.Input.Connect(0, Param);
+			Custom->Inputs.Add(Input);
+		}
+
 		// Un SceneTexture(PostProcessInput0) conectado para que la imagen quede ligada al material (SceneTextureLookup la lee).
 		UMaterialExpressionSceneTexture* Scene = NewObject<UMaterialExpressionSceneTexture>(Material);
 		Scene->Material = Material;
@@ -190,6 +213,47 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		SaveNewMaterial(Package, Material, DistortionPackage);
 	}
 
+	/** Crea M_TemporalDust: unlit, translúcido, opacidad = Color.A × (1 − Fresnel) para bordes suaves; apto para ISM. */
+	void CreateDustMaterialIfMissing()
+	{
+		if (FPackageName::DoesPackageExist(DustPackage))
+		{
+			return;
+		}
+
+		UPackage* Package = CreatePackage(DustPackage);
+		UMaterial* Material = NewObject<UMaterial>(Package, TEXT("M_TemporalDust"), RF_Public | RF_Standalone);
+		Material->BlendMode = BLEND_Translucent;
+		Material->SetShadingModel(MSM_Unlit);
+		Material->SetUsageByFlag(MATUSAGE_InstancedStaticMeshes, true);
+
+		UMaterialExpressionVectorParameter* ColorParam = NewObject<UMaterialExpressionVectorParameter>(Material);
+		ColorParam->Material = Material;
+		ColorParam->ParameterName = TEXT("Color");
+		ColorParam->DefaultValue = FLinearColor(0.75f, 0.72f, 0.66f, 0.3f);
+		Material->GetExpressionCollection().AddExpression(ColorParam);
+
+		UMaterialExpressionFresnel* Fresnel = NewObject<UMaterialExpressionFresnel>(Material);
+		Fresnel->Material = Material;
+		Fresnel->Exponent = 2.f;
+		Material->GetExpressionCollection().AddExpression(Fresnel);
+
+		UMaterialExpressionOneMinus* Soft = NewObject<UMaterialExpressionOneMinus>(Material);
+		Soft->Material = Material;
+		Soft->Input.Connect(0, Fresnel);
+		Material->GetExpressionCollection().AddExpression(Soft);
+
+		UMaterialExpressionMultiply* Alpha = NewObject<UMaterialExpressionMultiply>(Material);
+		Alpha->Material = Material;
+		Alpha->A.Connect(4, ColorParam);
+		Alpha->B.Connect(0, Soft);
+		Material->GetExpressionCollection().AddExpression(Alpha);
+
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, ColorParam);
+		Material->GetEditorOnlyData()->Opacity.Connect(0, Alpha);
+		SaveNewMaterial(Package, Material, DustPackage);
+	}
+
 	// Corre una vez al terminar de arrancar el motor con el editor (también con -game desde el editor, para el tour).
 	FDelayedAutoRegisterHelper GCreateEntropiaMaterials(EDelayedRegisterRunPhase::EndOfEngineInit, []
 	{
@@ -199,6 +263,7 @@ return float3(R, G, B) + Dummy.rgb * 0.0;
 		}
 		CreateGhostMaterialIfMissing();
 		CreateDistortionMaterialIfMissing();
+		CreateDustMaterialIfMissing();
 	});
 #endif
 
@@ -246,6 +311,22 @@ UMaterialInterface* TemporalFX::DistortionMaterial()
 		Cached = LoadObject<UMaterialInterface>(nullptr, DistortionObject, nullptr, LOAD_NoWarn);
 	}
 	return Cached.Get();
+}
+
+UMaterialInstanceDynamic* TemporalFX::MakeDust(UObject* Outer, const FLinearColor& Color)
+{
+	static TWeakObjectPtr<UMaterialInterface> Cached;
+	if (!Cached.IsValid())
+	{
+		Cached = LoadObject<UMaterialInterface>(nullptr, DustObject, nullptr, LOAD_NoWarn);
+	}
+	if (!Cached.IsValid())
+	{
+		return MakeTranslucent(Outer, Color);
+	}
+	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Cached.Get(), Outer);
+	Material->SetVectorParameterValue(TEXT("Color"), Color);
+	return Material;
 }
 
 UMaterialInstanceDynamic* TemporalFX::MakeTranslucent(UObject* Outer, const FLinearColor& Color)

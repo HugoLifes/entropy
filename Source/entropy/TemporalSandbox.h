@@ -13,6 +13,8 @@
 //   B            = romper el objeto rompible que tengas enfrente
 //   V            = Sobremarcha: el mundo lento y tú normal (prende/apaga)
 //   R / Shift+R  = R invierte solo lo que apuntas; Shift+R rebobina todo (pruebas)
+// Modo tour: con -EntropiaTour en la línea de comandos recorre las salas solo, usa los poderes,
+// registra los FPS (ENTROPIA_TOUR en el log), toma capturas en Saved/Tour/ y cierra el juego.
 // También crea el cuarto de pruebas (ATemporalTestChamber) y la sala de física (ATemporalPhysicsLab) flotando sobre el Sandbox.
 
 #pragma once
@@ -27,6 +29,14 @@ class UTemporalEnergyComponent;
 class UTemporalHUDWidget;
 class UObjectInversionComponent;
 class UOverdriveComponent;
+
+/** Un paso del modo tour: qué hacer y cuánto esperar (segundos reales). */
+struct FEntropiaTourStep
+{
+	FString Name;
+	TFunction<void()> Action;
+	float Seconds = 2.f;
+};
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
@@ -99,6 +109,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	FVector PlateOffset = FVector(0.f, -600.f, 60.f);
 
+	virtual void Tick(float DeltaTime) override;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -125,6 +137,12 @@ private:
 	void OnFireInverted();
 	void OnBreakInFront();
 	void OnOverdrive();
+	/** Modo tour (pruebas automáticas en juego). */
+	void StartTour();
+	void BeginTourStep();
+	void FinishTourStep();
+	void TourRewindAll(bool bStart);
+
 	/** Antes de teletransportar al jugador: soltar F y R. */
 	void EndPlayerPowersForTeleport();
 	TArray<AActor*> GatherRewindables() const;
@@ -163,4 +181,13 @@ private:
 	TObjectPtr<ATemporalPhysicsLab> PhysicsLab;
 
 	FVector PlayerStartLocation = FVector::ZeroVector;
+
+	TArray<FEntropiaTourStep> TourSteps;
+	int32 TourIndex = INDEX_NONE;
+	double TourStepStart = 0.0;
+	bool bTourShotTaken = false;
+	int32 TourFrames = 0;
+	double TourFrameTime = 0.0;
+	float TourMinFps = 0.f;
+	int32 TourSkipMinFrames = 0;
 };

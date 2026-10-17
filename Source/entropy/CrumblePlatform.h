@@ -41,6 +41,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	void ResetPlatform();
 
+	/** La deja caer ya (lo usa el modo tour para probar la sala 2 sin pisarla). */
+	void Crumble();
+
 	UFUNCTION(BlueprintPure, Category = "Entropia")
 	bool IsAnchored() const { return bAnchored; }
 
@@ -54,7 +57,6 @@ private:
 	UFUNCTION()
 	void HandleRewindFinished();
 
-	void Crumble();
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> Material;

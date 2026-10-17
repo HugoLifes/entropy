@@ -42,6 +42,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	bool BeginInversion();
 
+	/** Como BeginInversion, pero con un objetivo dado (sin apuntar). Lo usa el modo tour. */
+	bool BeginInversionOn(UTemporalRecorderComponent* Target);
+
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	void EndInversion();
 

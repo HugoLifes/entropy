@@ -217,6 +217,16 @@ bool UObjectInversionComponent::BeginInversion()
 	return true;
 }
 
+bool UObjectInversionComponent::BeginInversionOn(UTemporalRecorderComponent* Target)
+{
+	if (!Target || bInverting)
+	{
+		return false;
+	}
+	HighlightGroupOf(Target);
+	return BeginInversion();
+}
+
 void UObjectInversionComponent::EndInversion()
 {
 	if (!bInverting)
