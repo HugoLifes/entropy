@@ -9,6 +9,7 @@
 #include "ObjectInversionComponent.h"
 #include "TemporalFX.h"
 #include "Misc/App.h"
+#include "TemporalFracture.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -134,6 +135,76 @@ bool FEntropiaRealDeltaClamped::RunTest(const FString& Parameters)
 	FApp::SetDeltaTime(1.0 / 60.0);
 	TestEqual(TEXT("Un frame normal no cambia"), TemporalFX::RealDelta(), 1.f / 60.f, 1e-5f);
 	FApp::SetDeltaTime(Saved);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 2 · Fractura Voronoi
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFractureBoxVolume, "Entropia.Fracture.BoxVolume", EntropiaTestFlags::Flags)
+bool FEntropiaFractureBoxVolume::RunTest(const FString& Parameters)
+{
+	const FFractureCell Box = TemporalFracture::MakeBox(FVector(50.f));
+	TestEqual(TEXT("Una caja de 100 cm tiene 1,000,000 cm³"), TemporalFracture::CellVolume(Box), 1.0e6f, 1.f);
+	TestEqual(TEXT("La caja tiene 6 caras"), Box.Faces.Num(), 6);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFractureClipHalves, "Entropia.Fracture.ClipHalves", EntropiaTestFlags::Flags)
+bool FEntropiaFractureClipHalves::RunTest(const FString& Parameters)
+{
+	const FFractureCell Box = TemporalFracture::MakeBox(FVector(50.f));
+	FFractureCell Half;
+	TestTrue(TEXT("Cortar por la mitad deja algo"), TemporalFracture::ClipCell(Box, FPlane(FVector(1.f, 0.f, 0.f), 0.f), Half));
+	TestEqual(TEXT("La mitad pesa la mitad"), TemporalFracture::CellVolume(Half), 5.0e5f, 1.f);
+	int32 Interior = 0;
+	for (const FFracturePolygon& Face : Half.Faces)
+	{
+		Interior += Face.bInterior ? 1 : 0;
+	}
+	TestEqual(TEXT("Queda una sola cara interior (la tapa)"), Interior, 1);
+	FFractureCell Nothing;
+	TestFalse(TEXT("Cortar fuera de la caja deja vacío"), TemporalFracture::ClipCell(Box, FPlane(FVector(1.f, 0.f, 0.f), -60.f), Nothing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFractureVoronoiVolume, "Entropia.Fracture.VoronoiConservesVolume", EntropiaTestFlags::Flags)
+bool FEntropiaFractureVoronoiVolume::RunTest(const FString& Parameters)
+{
+	// El muro de la sala 4: 40 × 500 × 300 cm.
+	const FVector Half(20.f, 250.f, 150.f);
+	const TArray<FVector> Seeds = TemporalFracture::MakeSeeds(Half, 10, FVector::ZeroVector, 7);
+	const TArray<FFractureCell> Cells = TemporalFracture::VoronoiFracture(Half, Seeds);
+	TestEqual(TEXT("Una celda por semilla"), Cells.Num(), 10);
+	float Total = 0.f;
+	for (const FFractureCell& Cell : Cells)
+	{
+		const float Volume = TemporalFracture::CellVolume(Cell);
+		TestTrue(TEXT("Ninguna celda vacía"), Volume > 1.f);
+		Total += Volume;
+	}
+	const float Expected = 8.f * Half.X * Half.Y * Half.Z;
+	TestEqual(TEXT("Los pedazos suman el volumen del muro"), Total, Expected, Expected * 0.005f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFractureDeterministic, "Entropia.Fracture.Deterministic", EntropiaTestFlags::Flags)
+bool FEntropiaFractureDeterministic::RunTest(const FString& Parameters)
+{
+	const FVector Half(50.f);
+	const TArray<FVector> A = TemporalFracture::MakeSeeds(Half, 10, FVector(40.f, 0.f, 0.f), 1234);
+	const TArray<FVector> B = TemporalFracture::MakeSeeds(Half, 10, FVector(40.f, 0.f, 0.f), 1234);
+	TestEqual(TEXT("Mismo número de semillas"), A.Num(), B.Num());
+	bool bSame = A.Num() == B.Num();
+	for (int32 i = 0; bSame && i < A.Num(); ++i)
+	{
+		bSame = A[i].Equals(B[i], 0.001f);
+	}
+	TestTrue(TEXT("Misma semilla = mismos puntos (el rearmado es reproducible)"), bSame);
+	for (const FVector& P : A)
+	{
+		TestTrue(TEXT("Las semillas quedan dentro de la caja"), FMath::Abs(P.X) <= Half.X && FMath::Abs(P.Y) <= Half.Y && FMath::Abs(P.Z) <= Half.Z);
+	}
 	return true;
 }
 
