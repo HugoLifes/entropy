@@ -2,6 +2,7 @@
 
 #include "TimeBubble.h"
 #include "TemporalFX.h"
+#include "TemporalFXSubsystem.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -40,7 +41,7 @@ void ATimeBubble::BeginPlay()
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &ATimeBubble::OnEnter);
 	Sphere->OnComponentEndOverlap.AddDynamic(this, &ATimeBubble::OnExit);
 
-	TemporalFX::ApplyToAllSlots(Visual, TemporalFX::MakeTranslucent(this, VisualColor));
+	TemporalFX::ApplyToAllSlots(Visual, TemporalFX::MakeField(this, VisualColor));
 	Visual->SetWorldScale3D(FVector(0.01f));
 	TemporalFX::Burst(this, GetActorLocation(), FLinearColor(VisualColor.R, VisualColor.G, VisualColor.B), 1.2f);
 
@@ -62,6 +63,10 @@ void ATimeBubble::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	for (const TWeakObjectPtr<AActor>& Actor : ToRelease)
 	{
 		Release(Actor.Get());
+	}
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->ClearField(this);
 	}
 	Affected.Reset();
 	FrozenBodies.Reset();
@@ -88,6 +93,13 @@ void ATimeBubble::Tick(float DeltaTime)
 		Grow *= FMath::Clamp((LifeSeconds - Age) / 0.3f, 0.f, 1.f);
 	}
 	Visual->SetWorldScale3D(FVector(FMath::Max(0.01f, Sphere->GetScaledSphereRadius() / 50.f * Grow)));
+
+	// Distorsión: lo de adentro se ve congelado (más fuerte cuanto más lento va el tiempo) y el borde ondula.
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		const float Frozen = FMath::Clamp(1.f - Dilation, 0.f, 1.f);
+		FX->SetField(this, GetActorLocation(), Sphere->GetScaledSphereRadius() * Grow, Frozen * Grow);
+	}
 
 	// En cámara lenta todo pasa Dilation veces más lento: la velocidad se escala por Dilation
 	// y la aceleración (gravedad) por Dilation². Es una aproximación: los choques siguen siendo a velocidad real.

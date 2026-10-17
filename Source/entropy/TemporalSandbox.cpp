@@ -517,7 +517,17 @@ void ATemporalSandbox::TourRewindAll(bool bStart)
 
 void ATemporalSandbox::StartTour()
 {
-	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR start"));
+	FString Mode;
+	FParse::Value(FCommandLine::Get(), TEXT("EntropiaTour="), Mode);
+	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR start mode=%s"), Mode.IsEmpty() ? TEXT("normal") : *Mode);
+	if (Mode.Equals(TEXT("caos"), ESearchCase::IgnoreCase))
+	{
+		BuildChaosSteps();
+		TourIndex = 0;
+		SetActorTickEnabled(true);
+		BeginTourStep();
+		return;
+	}
 	auto Add = [this](const TCHAR* Name, float Seconds, TFunction<void()> Action)
 	{
 		TourSteps.Add({ Name, MoveTemp(Action), Seconds });
@@ -665,8 +675,17 @@ void ATemporalSandbox::FinishTourStep()
 {
 	const FEntropiaTourStep& Step = TourSteps[TourIndex];
 	const float AvgFps = TourFrameTime > 0.0 ? static_cast<float>(TourFrames / TourFrameTime) : 0.f;
-	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR step=%02d name=%s fps_avg=%.1f fps_min=%.1f"),
-		TourIndex, *Step.Name, AvgFps, TourMinFps == TNumericLimits<float>::Max() ? 0.f : TourMinFps);
+	// Para detectar fugas: cuántos Registros y actores quedan vivos tras cada paso.
+	int32 NumActors = 0;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		++NumActors;
+	}
+	const UTemporalSubsystem* Subsystem = GetWorld()->GetSubsystem<UTemporalSubsystem>();
+	const int32 NumRecorders = Subsystem ? Subsystem->GetRecorders().Num() : -1;
+	const float EnergyLeft = PlayerEnergy ? PlayerEnergy->Energy : -1.f;
+	UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR step=%02d name=%s fps_avg=%.1f fps_min=%.1f actors=%d recorders=%d energy=%.0f"),
+		TourIndex, *Step.Name, AvgFps, TourMinFps == TNumericLimits<float>::Max() ? 0.f : TourMinFps, NumActors, NumRecorders, EnergyLeft);
 
 	++TourIndex;
 	if (TourSteps.IsValidIndex(TourIndex))
@@ -719,4 +738,118 @@ void ATemporalSandbox::Tick(float DeltaTime)
 	{
 		FinishTourStep();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Tour "caos": hacer cosas raras a propósito para buscar errores, fugas y estados rotos.
+
+void ATemporalSandbox::BuildChaosSteps()
+{
+	auto Add = [this](const TCHAR* Name, float Seconds, TFunction<void()> Action)
+	{
+		TourSteps.Add({ Name, MoveTemp(Action), Seconds });
+	};
+	auto Player = [this]() { return Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0)); };
+	auto BreakAll = [this]()
+	{
+		for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
+		{
+			It->Break(It->GetActorLocation() + FMath::VRand() * 30.f, FMath::VRand());
+		}
+	};
+	auto LookAt = [this, Player](float Pitch)
+	{
+		if (ACharacter* Character = Player())
+		{
+			if (AController* Controller = Character->GetController())
+			{
+				Controller->SetControlRotation(FRotator(Pitch, Controller->GetControlRotation().Yaw, 0.f));
+			}
+		}
+	};
+
+	Add(TEXT("sala4"), 1.5f, [this] { OnRoom4(); });
+	Add(TEXT("spam_z_x10"), 1.5f, [this] { for (int32 i = 0; i < 10; ++i) { OnFire(); } });
+	Add(TEXT("spam_x_x10"), 1.5f, [this] { for (int32 i = 0; i < 10; ++i) { OnFireInverted(); } });
+	Add(TEXT("romper_todo_x3"), 1.5f, [BreakAll] { BreakAll(); BreakAll(); BreakAll(); });
+	Add(TEXT("spam_b_x10"), 1.f, [this] { for (int32 i = 0; i < 10; ++i) { OnBreakInFront(); } });
+	// Girar la cámara y presionar R en frames distintos (como al jugar): la cámara se actualiza al frame siguiente.
+	Add(TEXT("mirar_cielo"), 0.6f, [LookAt] { LookAt(70.f); });
+	Add(TEXT("r_al_cielo"), 1.f, [this] { if (PlayerInversion) { PlayerInversion->BeginInversion(); } });
+	Add(TEXT("r_suelta_y_mira"), 0.6f, [this, LookAt]
+	{
+		if (PlayerInversion) { PlayerInversion->EndInversion(); }
+		LookAt(-15.f);
+	});
+	Add(TEXT("shiftr_y_romper"), 2.f, [this, BreakAll] { TourRewindAll(true); BreakAll(); OnFire(); });
+	Add(TEXT("shiftr_suelta"), 0.8f, [this] { TourRewindAll(false); });
+	Add(TEXT("r_y_teletransporte"), 1.2f, [this]
+	{
+		TourRewindAll(true);
+		OnRoom4();
+		OnRoom4();
+		TourRewindAll(false);
+	});
+	Add(TEXT("v_toggle_x11"), 1.2f, [this] { for (int32 i = 0; i < 11; ++i) { OnOverdrive(); } });
+	Add(TEXT("v_f_r_juntos"), 1.5f, [this]
+	{
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		if (PlayerInverseStep) { PlayerInverseStep->BeginInverseStep(); }
+		if (PlayerInversion) { PlayerInversion->BeginInversion(); }
+		OnFire();
+	});
+	Add(TEXT("soltar_todo"), 0.8f, [this]
+	{
+		if (PlayerInverseStep) { PlayerInverseStep->EndInverseStep(); }
+		if (PlayerInversion) { PlayerInversion->EndInversion(); }
+		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
+	});
+	Add(TEXT("spam_q_x8"), 2.5f, [this] { for (int32 i = 0; i < 8; ++i) { OnBubble(); } OnFire(); });
+	Add(TEXT("sin_energia_f_e_v"), 1.f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = 0.f; }
+		if (PlayerInverseStep) { PlayerInverseStep->BeginInverseStep(); }
+		OnEcho();
+		OnOverdrive();
+		OnBubble();
+	});
+	Add(TEXT("spam_e_x6_g"), 1.5f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		for (int32 i = 0; i < 6; ++i) { OnEcho(); }
+		OnClearEchoes();
+		OnEcho();
+	});
+	Add(TEXT("teletransportes_x5"), 1.2f, [this] { OnRoom1(); OnRoom2(); OnRoom3(); OnRoom4(); OnBackToStart(); OnRoom4(); });
+	Add(TEXT("x_y_r_a_la_bala"), 2.f, [this]
+	{
+		OnFireInverted();
+		OnFire();
+		ATemporalProjectile* Newest = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			if (!Newest || It->GetGameTimeSinceCreation() < Newest->GetGameTimeSinceCreation())
+			{
+				Newest = *It;
+			}
+		}
+		if (Newest && PlayerInversion) { PlayerInversion->BeginInversionOn(Newest->Recorder); }
+	});
+	Add(TEXT("rebobinar_largo"), 4.f, [this]
+	{
+		if (PlayerInversion) { PlayerInversion->EndInversion(); }
+		TourRewindAll(true);
+	});
+	Add(TEXT("fin_rebobinar"), 1.f, [this] { TourRewindAll(false); });
+	Add(TEXT("churn_romper_rearmar"), 2.5f, [this, BreakAll]
+	{
+		for (int32 i = 0; i < 4; ++i)
+		{
+			BreakAll();
+			for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It) { It->Restore(); }
+		}
+		BreakAll();
+	});
+	Add(TEXT("t_cajas_x5"), 1.5f, [this] { for (int32 i = 0; i < 5; ++i) { OnRespawnCubes(); } });
+	Add(TEXT("calma"), 2.5f, [] {});
 }

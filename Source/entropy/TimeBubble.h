@@ -26,7 +26,7 @@ public:
 	TObjectPtr<UStaticMeshComponent> Visual;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
-	FLinearColor VisualColor = FLinearColor(0.2f, 0.9f, 1.f, 0.18f);
+	FLinearColor VisualColor = FLinearColor(0.3f, 0.85f, 1.f, 0.55f);
 
 	/** Velocidad del tiempo dentro de la burbuja. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.0"))

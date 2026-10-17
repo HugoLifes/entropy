@@ -385,4 +385,37 @@ bool FEntropiaDebrisFollowsShardClock::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pulido: campos de tiempo detenido (burbuja)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFieldSetUpdatesSameOwner, "Entropia.Field.UpdatesSameOwner", EntropiaTestFlags::Flags)
+bool FEntropiaFieldSetUpdatesSameOwner::RunTest(const FString& Parameters)
+{
+	FTemporalFieldSet Set;
+	Set.Set(7, FVector(0.f), 100.f, 1.f);
+	Set.Set(7, FVector(50.f, 0.f, 0.f), 300.f, 0.5f);
+	TestEqual(TEXT("La misma burbuja ocupa un solo lugar"), Set.Fields.Num(), 1);
+	TestEqual(TEXT("Y se actualiza su radio"), Set.Fields[0].Radius, 300.f, 0.001f);
+	Set.Remove(7);
+	TestEqual(TEXT("Al quitarla no queda nada"), Set.Fields.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFieldSetCapsAndReplacesOldest, "Entropia.Field.CapsAndReplacesOldest", EntropiaTestFlags::Flags)
+bool FEntropiaFieldSetCapsAndReplacesOldest::RunTest(const FString& Parameters)
+{
+	FTemporalFieldSet Set;
+	Set.Set(1, FVector(0.f), 100.f, 1.f);
+	Set.Set(2, FVector(0.f), 100.f, 1.f);
+	Set.Set(3, FVector(0.f), 100.f, 1.f);
+	TestEqual(TEXT("Nunca hay más campos que lugares en el material"), Set.Fields.Num(), FTemporalFieldSet::MaxFields);
+	bool bHasFirst = false;
+	for (const FTemporalField& Field : Set.Fields)
+	{
+		bHasFirst |= Field.Id == 1;
+	}
+	TestFalse(TEXT("Si hay demasiadas burbujas, la más vieja deja de pintarse"), bHasFirst);
+	return true;
+}
+
 #endif

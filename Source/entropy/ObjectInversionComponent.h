@@ -65,6 +65,8 @@ protected:
 
 private:
 	UTemporalRecorderComponent* FindTarget() const;
+	/** Empieza a rebobinar el grupo de Target (sin buscar con la mira). */
+	bool StartInversionOn(UTemporalRecorderComponent* Target);
 	void HighlightGroupOf(UTemporalRecorderComponent* Target);
 	void ClearHighlight();
 

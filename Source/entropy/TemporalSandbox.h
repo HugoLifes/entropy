@@ -139,6 +139,7 @@ private:
 	void OnOverdrive();
 	/** Modo tour (pruebas automáticas en juego). */
 	void StartTour();
+	void BuildChaosSteps();
 	void BeginTourStep();
 	void FinishTourStep();
 	void TourRewindAll(bool bStart);

@@ -181,7 +181,18 @@ bool UObjectInversionComponent::BeginInversion()
 		return true;
 	}
 
-	UTemporalRecorderComponent* Target = CurrentTarget.IsValid() ? CurrentTarget.Get() : FindTarget();
+	// Siempre buscamos de nuevo al presionar: el resaltado es del frame anterior y la cámara pudo girar
+	// (el tour "caos" lo encontró: R mirando al cielo gastaba energía en el objeto que estaba resaltado antes).
+	UTemporalRecorderComponent* Target = FindTarget();
+	if (Target != CurrentTarget.Get())
+	{
+		HighlightGroupOf(Target);
+	}
+	return StartInversionOn(Target);
+}
+
+bool UObjectInversionComponent::StartInversionOn(UTemporalRecorderComponent* Target)
+{
 	if (!Target || !Energy || !Energy->CanAfford(MinToStart))
 	{
 		if (Energy)
@@ -223,8 +234,7 @@ bool UObjectInversionComponent::BeginInversionOn(UTemporalRecorderComponent* Tar
 	{
 		return false;
 	}
-	HighlightGroupOf(Target);
-	return BeginInversion();
+	return StartInversionOn(Target);
 }
 
 void UObjectInversionComponent::EndInversion()
