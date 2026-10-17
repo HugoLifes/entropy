@@ -173,7 +173,7 @@ void UInverseStepComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	if (bActive)
 	{
 		// Se acabó la energía o la grabación: terminamos solos.
-		const bool bHasEnergy = Energy && Energy->Drain(CostPerSecond, FApp::GetDeltaTime());
+		const bool bHasEnergy = Energy && Energy->Drain(CostPerSecond, TemporalFX::RealDelta());
 		if (!bHasEnergy || !Recorder || !Recorder->IsRewinding())
 		{
 			EndInverseStep();

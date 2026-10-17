@@ -48,6 +48,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Entropia")
 	bool IsInverting() const { return bInverting; }
 
+	/**
+	 * ¿El candidato A está mejor apuntado que B? EdgeAngle = grados de la mira al borde del objeto
+	 * (negativo si el objeto cubre la mira); CenterAngle = grados de la mira a su centro.
+	 */
+	static bool IsBetterAim(float EdgeAngleA, float CenterAngleA, float EdgeAngleB, float CenterAngleB);
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected:

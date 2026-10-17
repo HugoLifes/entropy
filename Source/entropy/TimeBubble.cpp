@@ -75,7 +75,7 @@ void ATimeBubble::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// Visual: crece rápido al aparecer y se encoge en los últimos 0.3 s. La esfera básica mide 100 cm.
-	Age += FApp::GetDeltaTime();
+	Age += TemporalFX::RealDelta();
 	if (LifeSeconds > 0.f && Age >= LifeSeconds)
 	{
 		Destroy();

@@ -10,6 +10,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Misc/App.h"
 #include "TemporalFX.generated.h"
 
 class UMaterialInstanceDynamic;
@@ -25,6 +26,16 @@ namespace TemporalFX
 	ENTROPY_API void ApplyToAllSlots(UMeshComponent* Mesh, UMaterialInterface* Material);
 	/** Estallido de partículas (Niagara). No hace nada si la plantilla no carga. */
 	ENTROPY_API void Burst(const UObject* WorldContext, const FVector& Location, const FLinearColor& Color, float Scale = 1.f);
+
+	/**
+	 * Tiempo real del frame (sin dilatación) con tope de 0.1 s. Lo usan los poderes, que no deben frenarse
+	 * con la Sobremarcha ni las burbujas. El tope evita que un tirón (compilar shaders, perder el foco)
+	 * vacíe la energía o rebobine un segundo entero de golpe.
+	 */
+	inline float RealDelta()
+	{
+		return FMath::Min(static_cast<float>(FApp::GetDeltaTime()), 0.1f);
+	}
 
 	/** Busca un componente en el actor y, si no existe, lo crea y lo registra (así cada poder funciona solo). */
 	template <typename T>

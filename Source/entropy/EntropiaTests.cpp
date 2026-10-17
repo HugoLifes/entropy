@@ -6,6 +6,9 @@
 #include "Misc/AutomationTest.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalRecorderComponent.h"
+#include "ObjectInversionComponent.h"
+#include "TemporalFX.h"
+#include "Misc/App.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -101,6 +104,36 @@ bool FEntropiaGroupIgnoresDestroyed::RunTest(const FString& Parameters)
 	A->GatherGroup(Group);
 	TestEqual(TEXT("Un enlace destruido no entra al grupo"), Group.Num(), 1);
 	TestTrue(TEXT("El grupo conserva a A"), Group.Contains(A));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Revisión final: apuntar y tiempo real
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaAimPrefersCrosshair, "Entropia.Aim.PrefersCrosshairOverBigNearby", EntropiaTestFlags::Flags)
+bool FEntropiaAimPrefersCrosshair::RunTest(const FString& Parameters)
+{
+	// Plataforma de 3 m bajo el personaje: su esfera cubre la mira (borde -9°) pero su centro está a 30°.
+	// Bala a 10 m justo en la mira: borde -1°, centro 0.5°. Debe ganar la bala.
+	TestTrue(TEXT("La bala en la mira le gana a la plataforma grande cercana"),
+		UObjectInversionComponent::IsBetterAim(-1.f, 0.5f, -9.f, 30.f));
+	TestFalse(TEXT("Y no al revés"),
+		UObjectInversionComponent::IsBetterAim(-9.f, 30.f, -1.f, 0.5f));
+	// Si ninguno cubre la mira, gana el borde más cercano.
+	TestTrue(TEXT("Fuera de la mira gana el borde más cercano"),
+		UObjectInversionComponent::IsBetterAim(1.f, 3.f, 2.5f, 2.6f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaRealDeltaClamped, "Entropia.Time.RealDeltaClamped", EntropiaTestFlags::Flags)
+bool FEntropiaRealDeltaClamped::RunTest(const FString& Parameters)
+{
+	const double Saved = FApp::GetDeltaTime();
+	FApp::SetDeltaTime(0.5);
+	TestEqual(TEXT("Un tirón de 0.5 s cuenta como 0.1 s"), TemporalFX::RealDelta(), 0.1f);
+	FApp::SetDeltaTime(1.0 / 60.0);
+	TestEqual(TEXT("Un frame normal no cambia"), TemporalFX::RealDelta(), 1.f / 60.f, 1e-5f);
+	FApp::SetDeltaTime(Saved);
 	return true;
 }
 

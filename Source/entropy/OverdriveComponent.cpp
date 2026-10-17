@@ -110,7 +110,7 @@ void UOverdriveComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// Todo en tiempo real: la Sobremarcha no debe frenarse a sí misma.
-	const float RealDelta = FApp::GetDeltaTime();
+	const float RealDelta = TemporalFX::RealDelta();
 
 	if (bOverdrive)
 	{

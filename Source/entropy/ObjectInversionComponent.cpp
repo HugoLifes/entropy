@@ -48,13 +48,28 @@ UTemporalRecorderComponent* UObjectInversionComponent::FindTarget() const
 	PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	const FVector Forward = ViewRotation.Vector();
 
-	// Candidatos por ángulo desde la mira. Se mide desde el borde del objeto: las plataformas grandes
-	// son fáciles de apuntar y las balas o los pedazos pequeños también entran con los 4°.
+	// 1) Lo que está justo bajo la mira gana siempre (cajas, plataformas, pedazos: todo lo que bloquea la vista).
+	{
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ObjectInversionAimDirect), false, Pawn);
+		FHitResult Hit;
+		if (GetWorld()->LineTraceSingleByChannel(Hit, ViewLocation, ViewLocation + Forward * MaxDistance, ECC_Visibility, Params))
+		{
+			if (UTemporalRecorderComponent* Direct = Hit.GetActor() ? Hit.GetActor()->FindComponentByClass<UTemporalRecorderComponent>() : nullptr)
+			{
+				return Direct;
+			}
+		}
+	}
+
+	// 2) Si no, el más cercano a la mira por ángulo (así entran las balas, que no bloquean la vista).
+	//    Los que cubren la mira empatan en 0 y desempata el centro más cercano: una plataforma enorme junto
+	//    a ti ya no le gana a la bala que estás apuntando.
 	struct FCandidate
 	{
 		UTemporalRecorderComponent* Recorder;
 		FVector Center;
-		float Angle;
+		float EdgeAngle;
+		float CenterAngle;
 	};
 	TArray<FCandidate> Candidates;
 	for (UTemporalRecorderComponent* Recorder : Subsystem->GetRecorders())
@@ -77,12 +92,13 @@ UTemporalRecorderComponent* UObjectInversionComponent::FindTarget() const
 		const float EdgeAngle = CenterAngle - FMath::RadiansToDegrees(FMath::Atan(Radius / Distance));
 		if (EdgeAngle < MaxAngleDegrees)
 		{
-			Candidates.Add({ Recorder, Center, EdgeAngle });
+			Candidates.Add({ Recorder, Center, EdgeAngle, CenterAngle });
 		}
 	}
-	Candidates.Sort([](const FCandidate& A, const FCandidate& B) { return A.Angle < B.Angle; });
+	Candidates.Sort([](const FCandidate& A, const FCandidate& B) { return IsBetterAim(A.EdgeAngle, A.CenterAngle, B.EdgeAngle, B.CenterAngle); });
 
-	// El primero que se vea de verdad (sin pared en medio). Pocos traces: solo los mejores candidatos.
+	// El primero que se vea de verdad. Si lo que tapa la vista es de su mismo grupo (otro pedazo del mismo
+	// objeto roto), cuenta como visible: así un montón de escombros sí se puede apuntar.
 	for (int32 i = 0; i < FMath::Min(Candidates.Num(), 4); ++i)
 	{
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ObjectInversionAim), false, Pawn);
@@ -92,8 +108,30 @@ UTemporalRecorderComponent* UObjectInversionComponent::FindTarget() const
 		{
 			return Candidates[i].Recorder;
 		}
+		const UTemporalRecorderComponent* Blocker = Hit.GetActor() ? Hit.GetActor()->FindComponentByClass<UTemporalRecorderComponent>() : nullptr;
+		if (Blocker)
+		{
+			TSet<UTemporalRecorderComponent*> Group;
+			Candidates[i].Recorder->GatherGroup(Group);
+			if (Group.Contains(Blocker))
+			{
+				return Candidates[i].Recorder;
+			}
+		}
 	}
 	return nullptr;
+}
+
+bool UObjectInversionComponent::IsBetterAim(float EdgeAngleA, float CenterAngleA, float EdgeAngleB, float CenterAngleB)
+{
+	// Un borde "negativo" solo significa que el objeto cubre la mira: no debe premiar a los grandes o cercanos.
+	const float ScoreA = FMath::Max(EdgeAngleA, 0.f);
+	const float ScoreB = FMath::Max(EdgeAngleB, 0.f);
+	if (!FMath::IsNearlyEqual(ScoreA, ScoreB, 0.01f))
+	{
+		return ScoreA < ScoreB;
+	}
+	return CenterAngleA < CenterAngleB;
 }
 
 void UObjectInversionComponent::HighlightGroupOf(UTemporalRecorderComponent* Target)
@@ -210,7 +248,7 @@ void UObjectInversionComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 		{
 			bAnyRewinding |= Member.IsValid() && Member->IsRewinding();
 		}
-		const bool bHasEnergy = Energy && Energy->Drain(CostPerSecond, FApp::GetDeltaTime());
+		const bool bHasEnergy = Energy && Energy->Drain(CostPerSecond, TemporalFX::RealDelta());
 		if (!bHasEnergy || !bAnyRewinding)
 		{
 			EndInversion();

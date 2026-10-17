@@ -1,6 +1,7 @@
 // ENTROPÍA · Registro Temporal
 
 #include "TemporalRecorderComponent.h"
+#include "TemporalFX.h"
 #include "TemporalSubsystem.h"
 #include "Misc/App.h"
 #include "Components/PrimitiveComponent.h"
@@ -101,7 +102,7 @@ void UTemporalRecorderComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	case ETemporalState::Rewinding:
 		// DeltaTime ya viene multiplicado por la dilatación (0 dentro de una burbuja; 0.25 con la Sobremarcha).
 		// Usamos el mayor entre ese y el tiempo real: ni las burbujas ni la Sobremarcha frenan tu rebobinado.
-		RewindStep(bRewindIgnoresTimeDilation ? FMath::Max(DeltaTime, FApp::GetDeltaTime()) : DeltaTime);
+		RewindStep(bRewindIgnoresTimeDilation ? FMath::Max(DeltaTime, TemporalFX::RealDelta()) : DeltaTime);
 		break;
 	default:
 		break;

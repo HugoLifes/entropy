@@ -1,6 +1,7 @@
 // ENTROPÍA · Energía compartida
 
 #include "TemporalEnergyComponent.h"
+#include "TemporalFX.h"
 #include "Misc/App.h"
 
 UTemporalEnergyComponent::UTemporalEnergyComponent()
@@ -40,5 +41,5 @@ void UTemporalEnergyComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// Ignoramos el DeltaTime recibido: viene dilatado (Sobremarcha, burbujas).
-	Advance(FApp::GetDeltaTime());
+	Advance(TemporalFX::RealDelta());
 }
