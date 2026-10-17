@@ -11,6 +11,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "entropy.h"
+#include "EntropiaParkourComponent.h"
 
 AentropyCharacter::AentropyCharacter()
 {
@@ -118,6 +119,15 @@ void AentropyCharacter::DoLook(float Yaw, float Pitch)
 		AddControllerYawInput(Yaw);
 		AddControllerPitchInput(Pitch);
 	}
+}
+
+void AentropyCharacter::Jump()
+{
+	if (UEntropiaParkourComponent* Parkour = FindComponentByClass<UEntropiaParkourComponent>(); Parkour && Parkour->TryStart())
+	{
+		return;
+	}
+	Super::Jump();
 }
 
 void AentropyCharacter::DoJumpStart()

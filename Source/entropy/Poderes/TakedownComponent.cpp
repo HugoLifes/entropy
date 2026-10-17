@@ -3,6 +3,7 @@
 #include "TakedownComponent.h"
 #include "InverseStepComponent.h"
 #include "TemporalDashComponent.h"
+#include "EntropiaParkourComponent.h"
 #include "TemporalDilation.h"
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
@@ -95,7 +96,8 @@ bool UTakedownComponent::TryTakedown()
 {
 	ACharacter* Character = Cast<ACharacter>(GetOwner());
 	const UInverseStepComponent* Inverse = Character ? Character->FindComponentByClass<UInverseStepComponent>() : nullptr;
-	if (!Character || IsBusy() || (Inverse && Inverse->IsInverseActive()))
+	const UEntropiaParkourComponent* Parkour = Character ? Character->FindComponentByClass<UEntropiaParkourComponent>() : nullptr;
+	if (!Character || IsBusy() || (Inverse && Inverse->IsInverseActive()) || (Parkour && Parkour->IsBusy()))
 	{
 		return false;
 	}

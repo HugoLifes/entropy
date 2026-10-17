@@ -20,6 +20,7 @@
 #include "TakedownComponent.h"
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaFalls.h"
+#include "EntropiaParkour.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -626,6 +627,66 @@ bool FEntropiaFallOutcome::RunTest(const FString& Parameters)
 	TestEqual(TEXT("6 m quieto: sin daño"), Damage, 0.f);
 	TestTrue(TEXT("12 m: aterrizaje duro"), EntropiaFalls::Decide(1200.f, 600.f, Damage) == EEntropiaLanding::Hard);
 	TestEqual(TEXT("12 m: 10 por metro arriba de 9 m = 30"), Damage, 30.f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Parkour
+
+namespace EntropiaParkourTest
+{
+	FEntropiaObstacle Make(float Height, float Depth, bool bTopClear = true, bool bLandingClear = true, float Distance = 60.f)
+	{
+		FEntropiaObstacle O;
+		O.bHit = true;
+		O.Height = Height;
+		O.Depth = Depth;
+		O.bTopClear = bTopClear;
+		O.bLandingClear = bLandingClear;
+		O.Distance = Distance;
+		return O;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourClassify, "Entropia.Parkour.Classify", EntropiaTestFlags::Flags)
+bool FEntropiaParkourClassify::RunTest(const FString& Parameters)
+{
+	using EntropiaParkourTest::Make;
+	TestTrue(TEXT("Nada enfrente: nada"), EntropiaParkour::Classify(FEntropiaObstacle(), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("30 cm: se camina, nada"), EntropiaParkour::Classify(Make(30.f, 40.f), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Barda de 100 x 40: dash vault"), EntropiaParkour::Classify(Make(100.f, 40.f), false) == EEntropiaTraversal::DashVault);
+	TestTrue(TEXT("Mesa de 100 x 150 corriendo: gato"), EntropiaParkour::Classify(Make(100.f, 150.f), true) == EEntropiaTraversal::Kong);
+	TestTrue(TEXT("Mesa de 100 x 150 caminando: subir"), EntropiaParkour::Classify(Make(100.f, 150.f), false) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Barda sin piso del otro lado: subir"), EntropiaParkour::Classify(Make(100.f, 40.f, true, false), false) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Plataforma de 100 (fondo grande): subir"), EntropiaParkour::Classify(Make(100.f, 999.f), true) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Muro de 200: trepar"), EntropiaParkour::Classify(Make(200.f, 999.f), false) == EEntropiaTraversal::Climb);
+	TestTrue(TEXT("Muro de 200 sin espacio arriba: nada"), EntropiaParkour::Classify(Make(200.f, 999.f, false), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Muro de 300 corriendo: correr por la pared"), EntropiaParkour::Classify(Make(300.f, 999.f), true) == EEntropiaTraversal::WallRun);
+	TestTrue(TEXT("Muro de 300 caminando: nada"), EntropiaParkour::Classify(Make(300.f, 999.f), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Muro de 400 corriendo: nada"), EntropiaParkour::Classify(Make(400.f, 999.f), true) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Barda muy lejos: nada"), EntropiaParkour::Classify(Make(100.f, 40.f, true, true, 300.f), false) == EEntropiaTraversal::None);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourPath, "Entropia.Parkour.PathArcsOverObstacle", EntropiaTestFlags::Flags)
+bool FEntropiaParkourPath::RunTest(const FString& Parameters)
+{
+	const FVector Start(0.f, 0.f, 96.f);
+	const FVector Edge(100.f, 0.f, 100.f);
+	const FVector End(250.f, 0.f, 96.f);
+	for (const EEntropiaTraversal Kind : { EEntropiaTraversal::DashVault, EEntropiaTraversal::Kong })
+	{
+		TestTrue(TEXT("Empieza donde estás"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 0.f).Equals(Start, 0.5f));
+		TestTrue(TEXT("Termina del otro lado"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 1.f).Equals(End, 0.5f));
+		TestTrue(TEXT("A la mitad va por encima del borde"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 0.5f).Z >= Edge.Z + 40.f);
+	}
+	// Trepar: primero sube junto al muro y después avanza arriba.
+	const FVector Top(160.f, 0.f, 296.f);
+	const FVector Wall(100.f, 0.f, 200.f);
+	TestTrue(TEXT("Trepar empieza donde estás"), EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 0.f).Equals(Start, 0.5f));
+	TestTrue(TEXT("Trepar termina arriba"), EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 1.f).Equals(Top, 0.5f));
+	const FVector Mid = EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 0.55f);
+	TestTrue(TEXT("Al subir no atraviesa el muro (sigue de este lado)"), Mid.X < Wall.X);
 	return true;
 }
 

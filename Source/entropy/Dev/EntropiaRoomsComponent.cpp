@@ -2,6 +2,7 @@
 
 #include "EntropiaRoomsComponent.h"
 #include "EntropiaPlayerPowers.h"
+#include "TemporalParkourRoom.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -95,6 +96,10 @@ void UEntropiaRoomsComponent::BuildAll(UEntropiaPlayerPowers* InPowers)
 	{
 		ReflexRoom = GetWorld()->SpawnActor<ATemporalReflexRoom>(ATemporalReflexRoom::StaticClass(), PlaceAt(ReflexRoomOffset), Params);
 	}
+	if (bSpawnParkourRoom)
+	{
+		ParkourRoom = GetWorld()->SpawnActor<ATemporalParkourRoom>(ATemporalParkourRoom::StaticClass(), PlaceAt(ParkourRoomOffset), Params);
+	}
 }
 
 TArray<AActor*> UEntropiaRoomsComponent::GatherRewindables() const
@@ -156,6 +161,14 @@ void UEntropiaRoomsComponent::GoToRoom(int32 Key)
 			Powers->EndForTeleport();
 			Powers->ClearEchoes();
 			ReflexRoom->TeleportPlayerHere();
+		}
+		return;
+	case 6:
+		if (ParkourRoom)
+		{
+			Powers->EndForTeleport();
+			Powers->ClearEchoes();
+			ParkourRoom->TeleportPlayerHere();
 		}
 		return;
 	default:

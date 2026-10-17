@@ -9,6 +9,7 @@
 #include "TemporalDilation.h"
 #include "TemporalProjectile.h"
 #include "TakedownComponent.h"
+#include "EntropiaParkourComponent.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
@@ -95,7 +96,8 @@ bool UTemporalDashComponent::TryDash()
 	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
 	const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
 	const UTakedownComponent* Takedown = Character->FindComponentByClass<UTakedownComponent>();
-	if (!Move || (Inverse && Inverse->IsInverseActive()) || (Takedown && Takedown->IsBusy()))
+	const UEntropiaParkourComponent* Parkour = Character->FindComponentByClass<UEntropiaParkourComponent>();
+	if (!Move || (Inverse && Inverse->IsInverseActive()) || (Takedown && Takedown->IsBusy()) || (Parkour && Parkour->IsBusy()))
 	{
 		return false;
 	}

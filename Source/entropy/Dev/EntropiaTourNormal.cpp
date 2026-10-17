@@ -2,6 +2,8 @@
 
 #include "EntropiaTourComponent.h"
 #include "EntropiaLocomotionComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -490,6 +492,60 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
+	// Fase 3b · Parkour en la sala 6: Espacio frente a cada obstáculo (por el mismo camino que la tecla: Jump()).
+	auto ParkourAt = [this, Player](const FVector& Local, bool bRunning)
+	{
+		ACharacter* Character = Player();
+		if (!Character || !Rooms->ParkourRoom)
+		{
+			return;
+		}
+		Rooms->ParkourRoom->PlacePlayer(Local);
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetSprint(bRunning);
+		}
+		if (bRunning)
+		{
+			Character->GetCharacterMovement()->Velocity = Character->GetActorForwardVector() * 700.f;
+		}
+		Character->Jump();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR parkour=%s"), Powers->Parkour ? EntropiaParkour::Name(Powers->Parkour->GetCurrent()) : TEXT("?"));
+	};
+	auto LogWhere = [this, Player](const TCHAR* Name)
+	{
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetSprint(false);
+		}
+		const FVector Local = Player() && Rooms->ParkourRoom ? Rooms->ParkourRoom->GetActorTransform().InverseTransformPosition(Player()->GetActorLocation()) : FVector::ZeroVector;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s x=%.0f z=%.0f modo=%d"), Name, Local.X, Local.Z,
+			Player() ? static_cast<int32>(Player()->GetCharacterMovement()->MovementMode) : -1);
+	};
+	Add(TEXT("sala6"), 1.5f, [this] { Rooms->GoToRoom(6); });
+	Add(TEXT("salto_normal"), 0.4f, [this, Player]
+	{
+		if (Rooms->ParkourRoom)
+		{
+			Rooms->ParkourRoom->PlacePlayer(FVector(150.f, 0.f, 98.f));
+		}
+		if (Player())
+		{
+			Player()->Jump();
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR salto_normal parkour=%s"), Powers->Parkour ? EntropiaParkour::Name(Powers->Parkour->GetCurrent()) : TEXT("?"));
+	});
+	Add(TEXT("salto_normal_revisa"), 0.6f, [LogWhere] { LogWhere(TEXT("salto_normal_fin")); });
+	Add(TEXT("dash_vault"), 0.7f, [ParkourAt] { ParkourAt(FVector(490.f, -450.f, 98.f), false); });
+	Add(TEXT("dash_vault_fin"), 0.6f, [LogWhere] { LogWhere(TEXT("dash_vault_fin")); });
+	Add(TEXT("gato"), 0.75f, [ParkourAt] { ParkourAt(FVector(1035.f, -450.f, 98.f), true); });
+	Add(TEXT("gato_fin"), 0.6f, [LogWhere] { LogWhere(TEXT("gato_fin")); });
+	Add(TEXT("subir"), 0.6f, [ParkourAt] { ParkourAt(FVector(1710.f, -450.f, 98.f), false); });
+	Add(TEXT("subir_fin"), 0.6f, [LogWhere] { LogWhere(TEXT("subir_fin")); });
+	Add(TEXT("trepar"), 1.1f, [ParkourAt] { ParkourAt(FVector(710.f, 150.f, 98.f), false); });
+	Add(TEXT("trepar_fin"), 0.6f, [LogWhere] { LogWhere(TEXT("trepar_fin")); });
+	Add(TEXT("pared"), 1.3f, [ParkourAt] { ParkourAt(FVector(1810.f, 150.f, 98.f), true); });
+	Add(TEXT("pared_fin"), 0.8f, [LogWhere] { LogWhere(TEXT("pared_fin")); });
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		Rooms->GoToRoom(2);

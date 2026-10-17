@@ -2,6 +2,7 @@
 
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaLocomotionComponent.h"
+#include "EntropiaParkourComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -83,6 +84,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		// La mira va antes que los poderes que la usan (Invertir, Detener).
 		// La locomoción va antes que la mira: la mira guarda el giro "base" que la locomoción ya ajustó.
 		Locomotion = TemporalFX::FindOrAddComponent<UEntropiaLocomotionComponent>(Pawn, TEXT("Locomotion"));
+		Parkour = TemporalFX::FindOrAddComponent<UEntropiaParkourComponent>(Pawn, TEXT("Parkour"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
@@ -238,6 +240,10 @@ void UEntropiaPlayerPowers::ToggleOverdrive()
 
 void UEntropiaPlayerPowers::EndForTeleport()
 {
+	if (Parkour)
+	{
+		Parkour->Cancel();
+	}
 	if (InverseStep)
 	{
 		InverseStep->EndInverseStep();
