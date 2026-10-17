@@ -17,6 +17,7 @@
 #include "TemporalDashComponent.h"
 #include "TemporalHealthComponent.h"
 #include "TemporalCombat.h"
+#include "TakedownComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -564,6 +565,24 @@ bool FEntropiaCombatTimeToHit::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A 5 m y 25 m/s pega en ~0.183 s"), T, 0.1832f, 0.002f);
 	TestEqual(TEXT("Alejándose no pega"), TemporalCombat::TimeToHitCapsule(FVector(-500.f, 0.f, 0.f), FVector(-2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
 	TestEqual(TEXT("Si tarda más que la ventana, no cuenta"), TemporalCombat::TimeToHitCapsule(FVector(-2000.f, 0.f, 0.f), FVector(2500.f, 0.f, 0.f), FVector::ZeroVector, 96.f, 42.f, 0.35f), -1.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Remates
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaTakedownCondition, "Entropia.Takedown.BehindOrFrozen", EntropiaTestFlags::Flags)
+bool FEntropiaTakedownCondition::RunTest(const FString& Parameters)
+{
+	// Maniquí en el origen mirando hacia +X. Remate: a menos de 180 cm y (a su espalda > 120° o congelado).
+	const FVector Target = FVector::ZeroVector;
+	const FVector Forward(1.f, 0.f, 0.f);
+	TestTrue(TEXT("A 1.5 m por la espalda: sí"), UTakedownComponent::CanTakedown(FVector(-150.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("A 1.5 m de frente: no"), UTakedownComponent::CanTakedown(FVector(150.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestTrue(TEXT("De frente pero congelado: sí"), UTakedownComponent::CanTakedown(FVector(150.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
+	TestFalse(TEXT("Por la espalda pero a 2.5 m: no"), UTakedownComponent::CanTakedown(FVector(-250.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("De lado (90°): no"), UTakedownComponent::CanTakedown(FVector(0.f, 150.f, 0.f), Target, Forward, false, 180.f, 120.f));
+	TestFalse(TEXT("Congelado pero lejos: no"), UTakedownComponent::CanTakedown(FVector(400.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
 	return true;
 }
 

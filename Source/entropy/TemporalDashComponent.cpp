@@ -8,6 +8,7 @@
 #include "TemporalCombat.h"
 #include "TemporalDilation.h"
 #include "TemporalProjectile.h"
+#include "TakedownComponent.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
@@ -93,7 +94,8 @@ bool UTemporalDashComponent::TryDash()
 	}
 	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
 	const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
-	if (!Move || (Inverse && Inverse->IsInverseActive()))
+	const UTakedownComponent* Takedown = Character->FindComponentByClass<UTakedownComponent>();
+	if (!Move || (Inverse && Inverse->IsInverseActive()) || (Takedown && Takedown->IsBusy()))
 	{
 		return false;
 	}

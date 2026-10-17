@@ -15,7 +15,7 @@
 //   V            = Sobremarcha: el mundo lento y tú normal (prende/apaga)
 //   R / Ctrl+R   = R invierte solo lo que apuntas; Ctrl+R rebobina todo (pruebas)
 //   Clic derecho = apuntar (cámara al hombro; la mira selecciona)
-//   Clic izq.    = Detener lo que tienes en la mira (4 s; otro clic lo suelta)
+//   Clic izq.    = Detener lo que tienes en la mira (4 s; otro clic lo suelta) · o REMATE si el HUD lo muestra
 //   Shift        = dash (también en el aire, uno por salto)
 //   (pasiva) Ojo lento: apuntando, las balas cerca de ti se frenan
 // Modo tour: con -EntropiaTour en la línea de comandos recorre las salas solo, usa los poderes,
@@ -39,6 +39,7 @@ class UTimeStopComponent;
 class UTemporalDashComponent;
 class UTemporalHealthComponent;
 class USlowEyeComponent;
+class UTakedownComponent;
 class ATemporalProjectile;
 
 /** Un paso del modo tour: qué hacer y cuánto esperar (segundos reales). */
@@ -214,6 +215,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<USlowEyeComponent> PlayerSlowEye;
+
+	UPROPERTY()
+	TObjectPtr<UTakedownComponent> PlayerTakedown;
 
 	/** La R actual se pulsó con Ctrl (rebobinar todo) y no como Invertir objeto. */
 	bool bRewindingAll = false;

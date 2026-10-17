@@ -11,6 +11,7 @@
 #include "TemporalReflexRoom.generated.h"
 
 class ATemporalTurret;
+class ATemporalMannequin;
 
 UCLASS(NotPlaceable)
 class ENTROPY_API ATemporalReflexRoom : public AActor
@@ -31,6 +32,9 @@ public:
 
 	const TArray<TObjectPtr<ATemporalTurret>>& GetTurrets() const { return Turrets; }
 
+	/** 0 = de lado en la zona segura (para practicar) · 1 = mira a los lados · 2 = te mira de frente (hay que congelarlo). */
+	const TArray<TObjectPtr<ATemporalMannequin>>& GetMannequins() const { return Mannequins; }
+
 	/** Posición del mundo a partir de una local de la sala (para el modo tour). */
 	FVector RoomToWorld(const FVector& Local) const { return GetActorTransform().TransformPosition(Local); }
 
@@ -49,6 +53,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<ATemporalTurret>> Turrets;
+
+	UPROPERTY()
+	TArray<TObjectPtr<ATemporalMannequin>> Mannequins;
 
 	TArray<FRotator> TurretStartRotations;
 	bool bPlayerInside = false;

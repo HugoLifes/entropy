@@ -7,6 +7,7 @@
 #include "TemporalHealthComponent.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalTurret.h"
+#include "TemporalMannequin.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
@@ -115,6 +116,38 @@ void ATemporalReflexRoom::Build()
 		Turrets.Add(Turret);
 		TurretStartRotations.Add(Facing);
 	}
+
+	// Maniquíes temporales (clones oscuros del jugador): uno fácil en la zona segura, uno vigía y uno de frente.
+	const ACharacter* Player = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+	struct FMannequinSpot
+	{
+		FVector Local;
+		float Yaw;
+		bool bLookAround;
+	};
+	const FMannequinSpot Spots[] = {
+		{ FVector(330.f, -520.f, 100.f), -90.f, false },
+		{ FVector(1150.f, 300.f, 100.f), 0.f, true },
+		{ FVector(1000.f, -150.f, 100.f), 180.f, false },
+	};
+	for (const FMannequinSpot& Spot : Spots)
+	{
+		const FTransform T(FRotator(0.f, GetActorRotation().Yaw + Spot.Yaw, 0.f), RoomToWorld(Spot.Local));
+		FActorSpawnParameters Params;
+		Params.Owner = this;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ATemporalMannequin* Mannequin = GetWorld()->SpawnActor<ATemporalMannequin>(ATemporalMannequin::StaticClass(), T, Params);
+		if (!Mannequin)
+		{
+			continue;
+		}
+		Mannequin->bLookAround = Spot.bLookAround;
+		if (Player)
+		{
+			Mannequin->SetupFromPlayer(Player->GetMesh());
+		}
+		Mannequins.Add(Mannequin);
+	}
 }
 
 void ATemporalReflexRoom::ResetRoom()
@@ -126,6 +159,13 @@ void ATemporalReflexRoom::ResetRoom()
 			Turret->ClearBullets();
 			Turret->SetTrackingEnabled(false);
 			Turret->SetActorRotation(TurretStartRotations[i]);
+		}
+	}
+	for (ATemporalMannequin* Mannequin : Mannequins)
+	{
+		if (Mannequin)
+		{
+			Mannequin->ResetMannequin();
 		}
 	}
 	bPlayerInside = false;
@@ -205,7 +245,7 @@ void ATemporalReflexRoom::ShowHint() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1004, 30.f, FColor(255, 110, 90),
-			TEXT("SALA 5 · REFLEJOS: pasa la franja roja y las torretas te disparan · Shift = dash (justo antes de que te pegue = TIEMPO DE REFLEJO) · Clic der. = apuntar (Ojo lento) · Clic izq. = detener · 5 = empezar de nuevo"));
+			TEXT("SALA 5 · REFLEJOS: pasa la franja roja y las torretas te disparan · Shift = dash (justo antes de que te pegue = TIEMPO DE REFLEJO) · Clic der. = apuntar (Ojo lento) · Clic izq. = detener · Por la ESPALDA de un maniqui (o si esta congelado): CLIC = REMATE · 5 = empezar de nuevo"));
 	}
 }
 

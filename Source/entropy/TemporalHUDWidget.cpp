@@ -6,6 +6,7 @@
 #include "TemporalDilation.h"
 #include "TemporalHealthComponent.h"
 #include "TemporalDashComponent.h"
+#include "TakedownComponent.h"
 
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -40,6 +41,16 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 	LayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 
 	PaintCrosshair(AllottedGeometry, OutDrawElements, LayerId + 3);
+
+	// Remate disponible: aviso debajo de la mira.
+	if (const UTakedownComponent* TakedownComp = Takedown.Get(); TakedownComp && TakedownComp->GetAvailableTarget())
+	{
+		const FSlateFontInfo PromptFont = FCoreStyle::GetDefaultFontStyle("Bold", 14);
+		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 3,
+			AllottedGeometry.ToPaintGeometry(FVector2D(200.f, 24.f), FSlateLayoutTransform(Center + FVector2D(-58.f, 26.f))),
+			FString(TEXT("CLIC: REMATE")), PromptFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.35f, 0.25f, 1.f));
+	}
 
 	// Tiempo de reflejo: aviso arriba al centro mientras dura.
 	if (const UTemporalDashComponent* DashComp = Dash.Get(); DashComp && DashComp->IsReflexActive())

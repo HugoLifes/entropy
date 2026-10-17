@@ -40,6 +40,7 @@ public:
 	/** Ignora el daño durante estos segundos (dash, reaparecer). */
 	void SetInvulnerable(float Seconds) { InvulnerableTime = FMath::Max(InvulnerableTime, Seconds); }
 	bool IsInvulnerable() const { return InvulnerableTime > 0.f; }
+	void ClearInvulnerable() { InvulnerableTime = 0.f; }
 
 	bool IsDead() const { return bDead; }
 

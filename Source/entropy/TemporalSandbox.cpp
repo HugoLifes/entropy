@@ -15,6 +15,8 @@
 #include "TemporalReflexRoom.h"
 #include "TemporalDilation.h"
 #include "SlowEyeComponent.h"
+#include "TakedownComponent.h"
+#include "TemporalMannequin.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -125,6 +127,7 @@ void ATemporalSandbox::Setup()
 		PlayerTimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("PlayerTimeStop"));
 		PlayerDash = TemporalFX::FindOrAddComponent<UTemporalDashComponent>(Pawn, TEXT("PlayerDash"));
 		PlayerSlowEye = TemporalFX::FindOrAddComponent<USlowEyeComponent>(Pawn, TEXT("PlayerSlowEye"));
+		PlayerTakedown = TemporalFX::FindOrAddComponent<UTakedownComponent>(Pawn, TEXT("PlayerTakedown"));
 		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
 		// Barra de energía en pantalla.
@@ -137,6 +140,7 @@ void ATemporalSandbox::Setup()
 				EnergyHUD->SetAim(PlayerAim);
 				EnergyHUD->SetHealth(PlayerHealth);
 				EnergyHUD->SetDash(PlayerDash);
+				EnergyHUD->SetTakedown(PlayerTakedown);
 				EnergyHUD->AddToViewport();
 			}
 		}
@@ -476,6 +480,11 @@ void ATemporalSandbox::OnAimReleased()
 
 void ATemporalSandbox::OnPrimaryPressed()
 {
+	// Si el HUD muestra "CLIC: REMATE", el clic remata; si no, detiene lo que está en la mira.
+	if (PlayerTakedown && PlayerTakedown->TryTakedown())
+	{
+		return;
+	}
 	if (PlayerTimeStop)
 	{
 		PlayerTimeStop->StopAimed();
@@ -831,6 +840,80 @@ void ATemporalSandbox::StartTour()
 		}
 	});
 	Add(TEXT("ojo_lento_fin"), 0.5f, [this] { ClearTourTemps(); });
+	// Fase 3 · Remates: por la espalda (maniquí 0, zona segura) y de frente pero congelado con Detener (maniquí 2).
+	auto Mannequin = [this](int32 Index) -> ATemporalMannequin*
+	{
+		return ReflexRoom && ReflexRoom->GetMannequins().IsValidIndex(Index) ? ReflexRoom->GetMannequins()[Index].Get() : nullptr;
+	};
+	auto StandAt = [this, Player](const FVector& Where, const FVector& LookAt)
+	{
+		ACharacter* Character = Player();
+		if (!Character)
+		{
+			return;
+		}
+		Character->SetActorLocation(Where, false, nullptr, ETeleportType::TeleportPhysics);
+		const FRotator Facing(0.f, (LookAt - Where).Rotation().Yaw, 0.f);
+		Character->SetActorRotation(Facing);
+		if (AController* Controller = Character->GetController())
+		{
+			Controller->SetControlRotation(FRotator(-15.f, Facing.Yaw, 0.f));
+		}
+	};
+	Add(TEXT("remate_acercarse"), 1.f, [this, Mannequin, StandAt]
+	{
+		OnRoom5();
+		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
+		if (ATemporalMannequin* Target = Mannequin(0))
+		{
+			StandAt(Target->GetActorLocation() - Target->GetActorForwardVector() * 150.f, Target->GetActorLocation());
+		}
+	});
+	Add(TEXT("remate_espalda"), 0.4f, [this]
+	{
+		const bool bShown = PlayerTakedown && PlayerTakedown->GetAvailableTarget();
+		const bool bOk = PlayerTakedown && PlayerTakedown->TryTakedown();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_espalda aviso=%d ok=%d"), bShown ? 1 : 0, bOk ? 1 : 0);
+	});
+	Add(TEXT("maniqui_cae"), 2.f, [this, Mannequin]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR maniqui_cae tirado=%d"), Mannequin(0) && Mannequin(0)->IsKnockedDown() ? 1 : 0);
+	});
+	Add(TEXT("remate_congelado"), 1.4f, [this, Mannequin, StandAt]
+	{
+		ATemporalMannequin* Target = Mannequin(2);
+		if (!Target)
+		{
+			return;
+		}
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		StandAt(Target->GetActorLocation() + Target->GetActorForwardVector() * 150.f, Target->GetActorLocation());
+		const bool bBefore = PlayerTakedown && PlayerTakedown->TryTakedown();
+		if (PlayerTimeStop) { PlayerTimeStop->StopActor(Target); }
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_congelado sin_congelar=%d"), bBefore ? 1 : 0);
+	});
+	Add(TEXT("remate_congelado_golpe"), 1.2f, [this, Mannequin]
+	{
+		const bool bOk = PlayerTakedown && PlayerTakedown->TryTakedown();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_congelado ok=%d"), bOk ? 1 : 0);
+	});
+	Add(TEXT("remate_congelado_guardado"), 1.f, [this, Mannequin]
+	{
+		ATemporalMannequin* Target = Mannequin(2);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR golpe_guardado=%d tirado=%d"), Target && Target->HasPendingHit() ? 1 : 0, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (PlayerTimeStop && Target) { PlayerTimeStop->ReleaseActor(Target); }
+	});
+	Add(TEXT("remate_congelado_sale"), 1.2f, [this, Mannequin]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR al_soltar tirado=%d"), Mannequin(2) && Mannequin(2)->IsKnockedDown() ? 1 : 0);
+	});
+	Add(TEXT("maniqui_se_levanta"), 3.f, [] {});
+	Add(TEXT("maniqui_de_pie"), 0.5f, [this, Mannequin]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR maniqui_de_pie m0_tirado=%d m2_tirado=%d"),
+			Mannequin(0) && Mannequin(0)->IsKnockedDown() ? 1 : 0, Mannequin(2) && Mannequin(2)->IsKnockedDown() ? 1 : 0);
+		if (PlayerHealth) { PlayerHealth->ClearInvulnerable(); }
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		GoToRoom(1);
@@ -1234,6 +1317,40 @@ void ATemporalSandbox::BuildChaosSteps()
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR despues_de_morir vida=%.0f global=%.2f jugador=%.2f apuntando=%d"),
 			PlayerHealth ? PlayerHealth->Health : -1.f, Dilation ? Dilation->GetGlobalDilation() : -1.f,
 			Pawn ? Pawn->CustomTimeDilation : -1.f, PlayerAim && PlayerAim->IsAiming() ? 1 : 0);
+	});
+	// Fase 3 · Remates raros: muchos clics, dash y Sobremarcha a la vez, y teletransportarse a medio remate.
+	Add(TEXT("remate_spam"), 1.f, [this]
+	{
+		OnRoom5();
+		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
+		if (ReflexRoom && ReflexRoom->GetMannequins().Num() > 0)
+		{
+			if (ATemporalMannequin* Target = ReflexRoom->GetMannequins()[0])
+			{
+				if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+				{
+					Pawn->SetActorLocation(Target->GetActorLocation() - Target->GetActorForwardVector() * 120.f, false, nullptr, ETeleportType::TeleportPhysics);
+				}
+			}
+		}
+	});
+	Add(TEXT("remate_x5_dash_v"), 1.f, [this]
+	{
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		for (int32 i = 0; i < 5; ++i) { OnPrimaryPressed(); OnDash(); }
+	});
+	Add(TEXT("remate_y_teletransporte"), 1.f, [this]
+	{
+		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
+		OnPrimaryPressed();
+		OnRoom4();
+	});
+	Add(TEXT("remate_revisa"), 1.f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_revisa global=%.2f jugador=%.2f"), Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
+		if (PlayerHealth) { PlayerHealth->ClearInvulnerable(); }
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }
