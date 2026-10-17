@@ -1,6 +1,7 @@
 // ENTROPÍA · Registro Temporal
 
 #include "TemporalRecorderComponent.h"
+#include "TemporalSubsystem.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Actor.h"
@@ -27,6 +28,64 @@ void UTemporalRecorderComponent::BeginPlay()
 	{
 		PoseSource = GetOwner()->FindComponentByClass<USkeletalMeshComponent>();
 	}
+
+	if (UTemporalSubsystem* Subsystem = GetWorld()->GetSubsystem<UTemporalSubsystem>())
+	{
+		Subsystem->Register(this);
+	}
+}
+
+void UTemporalRecorderComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UTemporalSubsystem* Subsystem = GetWorld() ? GetWorld()->GetSubsystem<UTemporalSubsystem>() : nullptr)
+	{
+		Subsystem->Unregister(this);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void UTemporalRecorderComponent::LinkWith(UTemporalRecorderComponent* Other)
+{
+	if (!Other || Other == this)
+	{
+		return;
+	}
+	Links.AddUnique(Other);
+	Other->Links.AddUnique(this);
+}
+
+void UTemporalRecorderComponent::GatherGroup(TSet<UTemporalRecorderComponent*>& OutGroup)
+{
+	// Recorrido a lo ancho: así un enlace A-B-C también trae a C al apuntar a A.
+	TArray<UTemporalRecorderComponent*> Pending = { this };
+	while (Pending.Num() > 0)
+	{
+		UTemporalRecorderComponent* Current = Pending.Pop();
+		if (!IsValid(Current) || OutGroup.Contains(Current))
+		{
+			continue;
+		}
+		OutGroup.Add(Current);
+		for (const TWeakObjectPtr<UTemporalRecorderComponent>& Link : Current->Links)
+		{
+			if (Link.IsValid())
+			{
+				Pending.Add(Link.Get());
+			}
+		}
+	}
+}
+
+bool UTemporalRecorderComponent::GetRewindSegment(const FTemporalFrame*& OutFrom, const FTemporalFrame*& OutTo, float& OutAlpha) const
+{
+	if (!IsRewinding() || NumFrames() == 0)
+	{
+		return false;
+	}
+	OutFrom = &LastRewoundFrame;
+	OutTo = &Frames.Last();
+	OutAlpha = RewindAlpha;
+	return true;
 }
 
 void UTemporalRecorderComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -146,10 +205,11 @@ void UTemporalRecorderComponent::RewindStep(float DeltaTime)
 	// Mezclamos entre el frame actual y el anterior: así no se ve a saltos aunque bajen los FPS
 	// o RewindSpeed no coincida con el ritmo de grabación.
 	FTransform Target = LastRewoundFrame.Transform;
+	RewindAlpha = 0.f;
 	if (NumFrames() > 0 && LastRewoundFrame.DeltaTime > KINDA_SMALL_NUMBER)
 	{
-		const float Alpha = FMath::Clamp(RewindAccumulator / LastRewoundFrame.DeltaTime, 0.f, 1.f);
-		Target.Blend(LastRewoundFrame.Transform, Frames.Last().Transform, Alpha);
+		RewindAlpha = FMath::Clamp(RewindAccumulator / LastRewoundFrame.DeltaTime, 0.f, 1.f);
+		Target.Blend(LastRewoundFrame.Transform, Frames.Last().Transform, RewindAlpha);
 	}
 	GetOwner()->SetActorTransform(Target, false, nullptr, ETeleportType::TeleportPhysics);
 

@@ -2,6 +2,7 @@
 
 #include "TemporalSandbox.h"
 #include "TemporalRecorderComponent.h"
+#include "TemporalSubsystem.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -123,11 +124,15 @@ TArray<AActor*> ATemporalSandbox::GatherRewindables() const
 	// pedazos de objetos rotos, balas… Así cada cosa nueva con Recorder responde a R sin tocar este código.
 	const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
 	TArray<AActor*> Result;
-	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	if (const UTemporalSubsystem* Subsystem = GetWorld()->GetSubsystem<UTemporalSubsystem>())
 	{
-		if (*It != Player && IsValid(*It) && It->FindComponentByClass<UTemporalRecorderComponent>())
+		for (UTemporalRecorderComponent* Recorder : Subsystem->GetRecorders())
 		{
-			Result.Add(*It);
+			AActor* RecorderOwner = Recorder->GetOwner();
+			if (RecorderOwner != Player && IsValid(RecorderOwner))
+			{
+				Result.AddUnique(RecorderOwner);
+			}
 		}
 	}
 	return Result;

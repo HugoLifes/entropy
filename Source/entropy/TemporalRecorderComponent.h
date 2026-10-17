@@ -114,10 +114,26 @@ public:
 
 	bool IsRewinding() const { return State == ETemporalState::Rewinding; }
 
+	/**
+	 * Enlaza dos Registros en ambos sentidos: "Invertir objeto" rebobina el grupo completo
+	 * (los pedazos de un mismo objeto roto, o una bala con lo que rompió).
+	 */
+	void LinkWith(UTemporalRecorderComponent* Other);
+
+	/** Este Registro y todos los enlazados, directa o indirectamente. Ignora los destruidos. */
+	void GatherGroup(TSet<UTemporalRecorderComponent*>& OutGroup);
+
+	/**
+	 * Tramo actual del rebobinado: vamos de From (donde estamos) a To (el frame anterior) con Alpha 0..1.
+	 * Sirve para mezclar la pose al revés. False si no está rebobinando o no hay frame anterior.
+	 */
+	bool GetRewindSegment(const FTemporalFrame*& OutFrom, const FTemporalFrame*& OutTo, float& OutAlpha) const;
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
 	void RecordFrame(float DeltaTime);
@@ -141,5 +157,9 @@ private:
 	FTemporalFrame LastRewoundFrame;
 	float RecordedSeconds = 0.f;
 	float RewindAccumulator = 0.f;
+	/** Alpha del tramo actual (lo calcula RewindStep; lo lee GetRewindSegment). */
+	float RewindAlpha = 0.f;
 	bool bWasSimulatingPhysics = false;
+
+	TArray<TWeakObjectPtr<UTemporalRecorderComponent>> Links;
 };
