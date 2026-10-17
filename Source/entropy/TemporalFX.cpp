@@ -114,8 +114,7 @@ namespace
 		Custom->Description = TEXT("TemporalDistortion");
 		Custom->OutputType = CMOT_Float3;
 		Custom->Code = TEXT(R"HLSL(
-float2 BufUV = GetDefaultSceneTextureUV(Parameters, 14);
-float2 ViewUV = (BufUV * View.BufferSizeAndInvSize.xy - View.ViewRectMin.xy) * View.ViewSizeAndInvSize.zw;
+float2 ViewUV = GetViewportUV(Parameters);
 float Aspect = View.ViewSizeAndInvSize.x / max(View.ViewSizeAndInvSize.y, 1.0);
 float2 Off = float2(0.0, 0.0);
 float Chroma = 0.0;
@@ -144,11 +143,13 @@ for (int i = 0; i < 4; ++i)
 	Off += Dir * Wave * Mask * Aura.w;
 	Chroma += Mask * abs(Aura.w) * 0.6;
 }
-float2 OffBuf = Off * View.ViewSizeAndInvSize.xy * View.BufferSizeAndInvSize.zw;
 float Split = ChromaBase + Chroma * ChromaGain;
-float R = SceneTextureLookup(BufUV + OffBuf * (1.0 + Split), 14, false).r;
-float G = SceneTextureLookup(BufUV + OffBuf, 14, false).g;
-float B = SceneTextureLookup(BufUV + OffBuf * (1.0 - Split), 14, false).b;
+float2 UvR = ClampSceneTextureUV(ViewportUVToSceneTextureUV(ViewUV + Off * (1.0 + Split), 14), 14);
+float2 UvG = ClampSceneTextureUV(ViewportUVToSceneTextureUV(ViewUV + Off, 14), 14);
+float2 UvB = ClampSceneTextureUV(ViewportUVToSceneTextureUV(ViewUV + Off * (1.0 - Split), 14), 14);
+float R = SceneTextureLookup(UvR, 14, true).r;
+float G = SceneTextureLookup(UvG, 14, true).g;
+float B = SceneTextureLookup(UvB, 14, true).b;
 return float3(R, G, B) + Dummy.rgb * 0.0;
 )HLSL");
 
