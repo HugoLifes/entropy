@@ -49,7 +49,8 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
 		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(FVector2D(200.f, 24.f), FSlateLayoutTransform(Center + FVector2D(-58.f, 26.f))),
-			FString(TEXT("CLIC: REMATE")), PromptFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.35f, 0.25f, 1.f));
+			FString(TakedownComp->GetAvailableKind() == EEntropiaTakedown::NeckBreak ? TEXT("CLIC: ROMPER CUELLO") : TEXT("CLIC: REMATE")),
+			PromptFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.35f, 0.25f, 1.f));
 	}
 
 	// Tiempo de reflejo: aviso arriba al centro mientras dura.

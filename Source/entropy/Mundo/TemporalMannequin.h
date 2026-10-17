@@ -45,8 +45,15 @@ public:
 	/** Aturdido por un golpe (no hace nada durante unos instantes de su tiempo). */
 	bool IsStaggered() const { return StaggerTime > 0.f; }
 
-	/** Ocupado reaccionando: tirado, con golpe pendiente o aturdido. */
-	bool IsReacting() const { return bKnockedDown || bPendingHit || StaggerTime > 0.f; }
+	/** Ocupado reaccionando: tirado, con golpe pendiente, aturdido, cayendo del cuello roto o sometido. */
+	bool IsReacting() const { return bKnockedDown || bPendingHit || StaggerTime > 0.f || NeckBreakTime > 0.f || bSubdued; }
+
+	/** Romperle el cuello: se desploma (animación de muerte y luego muñeco de trapo). Congelado, espera a que vuelva su tiempo. */
+	void ReceiveNeckBreak(const FVector& Direction);
+
+	/** Sometido (agarrado del brazo): no hace nada hasta que lo sueltan. */
+	bool IsSubdued() const { return bSubdued; }
+	void SetSubdued(bool bInSubdued);
 
 	bool IsKnockedDown() const { return bKnockedDown; }
 	bool HasPendingHit() const { return bPendingHit; }
@@ -67,6 +74,10 @@ protected:
 	float StaggerSeconds = 0.6f;
 
 	float StaggerTime = 0.f;
+	float NeckBreakTime = 0.f;
+	FVector NeckBreakDirection = FVector::ForwardVector;
+	bool bSubdued = false;
+	bool bPendingNeckBreak = false;
 
 private:
 	void Recover(bool bWithEffect);

@@ -20,6 +20,7 @@ class UTemporalDashComponent;
 class UEntropiaLocomotionComponent;
 class UEntropiaParkourComponent;
 class UEntropiaCoverComponent;
+class UEntropiaMeleeComponent;
 class UTemporalEnergyComponent;
 class UTemporalHealthComponent;
 class UTemporalHUDWidget;
@@ -68,7 +69,7 @@ public:
 	void ClearEchoes();
 	/** Q: burbuja frente a ti. */
 	void SpawnBubble();
-	/** Clic izquierdo: remata si el HUD lo muestra; si no, detiene lo que está en la mira. */
+	/** Clic izquierdo: remata si el HUD lo muestra; si no, apuntando detiene lo que está en la mira y sin apuntar golpea. */
 	void PrimaryAction();
 	void TryDash();
 	void ToggleOverdrive();
@@ -91,6 +92,7 @@ public:
 	UPROPERTY() TObjectPtr<UEntropiaLocomotionComponent> Locomotion;
 	UPROPERTY() TObjectPtr<UEntropiaParkourComponent> Parkour;
 	UPROPERTY() TObjectPtr<UEntropiaCoverComponent> Cover;
+	UPROPERTY() TObjectPtr<UEntropiaMeleeComponent> Melee;
 	UPROPERTY() TObjectPtr<USlowEyeComponent> SlowEye;
 	UPROPERTY() TObjectPtr<UTakedownComponent> Takedown;
 	UPROPERTY() TObjectPtr<UOverdriveComponent> Overdrive;

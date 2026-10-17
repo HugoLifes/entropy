@@ -362,8 +362,10 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		Rooms->GoToRoom(5);
 		if (Powers->Health) { Powers->Health->SetInvulnerable(30.f); }
 		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
-		StandBehind(0, 120.f);
-		Powers->PrimaryAction();
+		if (ATemporalMannequin* Target = StandBehind(0, 120.f))
+		{
+			Target->ReceiveTakedown((Target->GetActorForwardVector() + FVector(0.f, 0.f, 0.35f)).GetSafeNormal(), 900.f);
+		}
 	});
 	Add(TEXT("detener_cayendo"), 0.15f, [this]
 	{

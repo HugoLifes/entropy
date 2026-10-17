@@ -6,6 +6,7 @@
 #include "EntropiaCoverComponent.h"
 #include "TemporalCombatRoom.h"
 #include "TemporalArmedDummy.h"
+#include "EntropiaMeleeComponent.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
@@ -373,7 +374,7 @@ void UEntropiaTourComponent::BuildNormalSteps()
 			StandAt(Target->GetActorLocation() - Target->GetActorForwardVector() * 150.f, Target->GetActorLocation());
 		}
 	});
-	Add(TEXT("remate_espalda"), 0.4f, [this]
+	Add(TEXT("remate_espalda"), 1.f, [this]
 	{
 		const bool bShown = Powers->Takedown && Powers->Takedown->GetAvailableTarget();
 		const bool bOk = Powers->Takedown && Powers->Takedown->TryTakedown();
@@ -486,7 +487,10 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		Powers->PrimaryAction();
 		const bool bBusy = Powers->Takedown && Powers->Takedown->IsBusy();
 		const bool bStillDashing = Powers->Dash && Powers->Dash->IsDashing();
+		// El doble clic se prueba apuntando (lo que antes detenía al maniquí a medio golpe).
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
 		Powers->PrimaryAction();
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_en_dash remate=%d sigue_dash=%d detenidos_tras_doble_clic=%d"),
 			bBusy ? 1 : 0, bStillDashing ? 1 : 0, Powers->TimeStop ? Powers->TimeStop->NumStopped() : -1);
 	});
@@ -688,6 +692,67 @@ void UEntropiaTourComponent::BuildNormalSteps()
 	Add(TEXT("dummy_dispara_revisa"), 0.3f, [this, DummyShots]
 	{
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dummies_dispararon=%d"), DummyShots() > 0 ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 3b · Golpes: combo de 3 al maniquí 0 de la sala 5 (el tercero lo tumba); romper el cuello por la espalda;
+	// golpe con enfoque a uno congelado de frente.
+	auto M = [this](int32 Index) -> ATemporalMannequin*
+	{
+		return Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().IsValidIndex(Index) ? Rooms->ReflexRoom->GetMannequins()[Index].Get() : nullptr;
+	};
+	Add(TEXT("golpes_prepara"), 0.6f, [this, M, StandAt]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (ATemporalMannequin* Target = M(0))
+		{
+			StandAt(Target->GetActorLocation() + Target->GetActorForwardVector() * 110.f, Target->GetActorLocation());
+		}
+	});
+	Add(TEXT("golpe_1"), 0.35f, [this] { if (Powers->Melee) { Powers->Melee->TryAttack(); } });
+	Add(TEXT("golpe_2"), 0.35f, [this] { if (Powers->Melee) { Powers->Melee->TryAttack(); } });
+	Add(TEXT("golpe_3"), 0.8f, [this] { if (Powers->Melee) { Powers->Melee->TryAttack(); } });
+	Add(TEXT("golpes_revisa"), 0.3f, [this, M]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR golpes ultimo=%d conectaron=%d tirado=%d"),
+			Powers->Melee ? Powers->Melee->GetLastIndex() : -1, Powers->Melee ? Powers->Melee->GetHitsLanded() : -1,
+			M(0) && M(0)->IsKnockedDown() ? 1 : 0);
+	});
+	Add(TEXT("romper_cuello"), 1.2f, [this, M, StandAt]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (ATemporalMannequin* Target = M(0))
+		{
+			StandAt(Target->GetActorLocation() - Target->GetActorForwardVector() * 120.f, Target->GetActorLocation());
+		}
+	});
+	Add(TEXT("romper_cuello_clic"), 0.9f, [this]
+	{
+		Powers->PrimaryAction();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR romper_cuello tipo=%d"), Powers->Takedown ? static_cast<int32>(Powers->Takedown->GetLastKind()) : -1);
+	});
+	Add(TEXT("romper_cuello_revisa"), 0.6f, [this, M]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cuello_roto tirado=%d"), M(0) && M(0)->IsKnockedDown() ? 1 : 0);
+	});
+	Add(TEXT("golpe_enfoque"), 0.8f, [this, M, StandAt]
+	{
+		if (ATemporalMannequin* Target = M(2))
+		{
+			StandAt(Target->GetActorLocation() + Target->GetActorForwardVector() * 140.f, Target->GetActorLocation());
+			if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+			if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+		}
+	});
+	Add(TEXT("golpe_enfoque_clic"), 0.5f, [this]
+	{
+		Powers->PrimaryAction();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR golpe_enfoque tipo=%d"), Powers->Takedown ? static_cast<int32>(Powers->Takedown->GetLastKind()) : -1);
+	});
+	Add(TEXT("golpe_enfoque_suelta"), 1.f, [this, M]
+	{
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]

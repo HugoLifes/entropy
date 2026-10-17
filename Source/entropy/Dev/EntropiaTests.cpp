@@ -23,6 +23,7 @@
 #include "EntropiaParkour.h"
 #include "EntropiaCoverComponent.h"
 #include "TemporalArmedDummy.h"
+#include "EntropiaMeleeComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -732,6 +733,32 @@ bool FEntropiaArmedDummyRoutine::RunTest(const FString& Parameters)
 	R.Advance(0.3f);
 	TestTrue(TEXT("Cubierto otra vez"), R.Step == EStep::Covered);
 	TestEqual(TEXT("Recién puesto (cubierto): nada afuera"), FArmedDummyRoutine().StepAlpha(), 0.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Pelea
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaMeleeComboWindow, "Entropia.Melee.ComboWindow", EntropiaTestFlags::Flags)
+bool FEntropiaMeleeComboWindow::RunTest(const FString& Parameters)
+{
+	FEntropiaCombo Combo;
+	TestEqual(TEXT("Primer clic: golpe 1"), Combo.Next(10.f), 1);
+	TestEqual(TEXT("Clic demasiado pronto (0.1 s): no golpea"), Combo.Next(10.1f), 0);
+	TestEqual(TEXT("A 0.3 s: golpe 2"), Combo.Next(10.3f), 2);
+	TestEqual(TEXT("A 0.6 s: golpe 3"), Combo.Next(10.6f), 3);
+	TestEqual(TEXT("Después del 3: empieza otra vez"), Combo.Next(10.9f), 1);
+	TestEqual(TEXT("Tras 1 s sin clic: empieza otra vez"), Combo.Next(11.9f), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaTakedownKindChoice, "Entropia.Takedown.KindChoice", EntropiaTestFlags::Flags)
+bool FEntropiaTakedownKindChoice::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Por la espalda: romper el cuello"), UTakedownComponent::ChooseKind(true, false, false) == EEntropiaTakedown::NeckBreak);
+	TestTrue(TEXT("Sometido: romper el cuello"), UTakedownComponent::ChooseKind(false, false, true) == EEntropiaTakedown::NeckBreak);
+	TestTrue(TEXT("Congelado de frente: golpe con enfoque"), UTakedownComponent::ChooseKind(false, true, false) == EEntropiaTakedown::FocusStrike);
+	TestTrue(TEXT("Congelado y por la espalda: romper el cuello"), UTakedownComponent::ChooseKind(true, true, false) == EEntropiaTakedown::NeckBreak);
 	return true;
 }
 

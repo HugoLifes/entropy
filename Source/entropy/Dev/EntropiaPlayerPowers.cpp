@@ -4,6 +4,7 @@
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
+#include "EntropiaMeleeComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -87,6 +88,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		Locomotion = TemporalFX::FindOrAddComponent<UEntropiaLocomotionComponent>(Pawn, TEXT("Locomotion"));
 		Parkour = TemporalFX::FindOrAddComponent<UEntropiaParkourComponent>(Pawn, TEXT("Parkour"));
 		Cover = TemporalFX::FindOrAddComponent<UEntropiaCoverComponent>(Pawn, TEXT("Cover"));
+		Melee = TemporalFX::FindOrAddComponent<UEntropiaMeleeComponent>(Pawn, TEXT("Melee"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
@@ -212,15 +214,23 @@ void UEntropiaPlayerPowers::SpawnBubble()
 
 void UEntropiaPlayerPowers::PrimaryAction()
 {
-	// Si el HUD muestra "CLIC: REMATE", el clic remata; si no, detiene lo que está en la mira.
-	// Durante un remate los clics extra no hacen nada (antes detenían al maniquí a medio golpe).
+	// Si el HUD muestra un remate, el clic remata. Durante un remate los clics extra no hacen nada.
 	if (Takedown && (Takedown->IsBusy() || Takedown->TryTakedown()))
 	{
 		return;
 	}
-	if (TimeStop)
+	// Apuntando: Detener lo que está en la mira. Sin apuntar: golpes (combo de 3).
+	if (Aim && Aim->IsAiming())
 	{
-		TimeStop->StopAimed();
+		if (TimeStop)
+		{
+			TimeStop->StopAimed();
+		}
+		return;
+	}
+	if (Melee)
+	{
+		Melee->TryAttack();
 	}
 }
 

@@ -68,7 +68,9 @@ void UTemporalAimComponent::ApplyCamera()
 		Boom->TargetArmLength = FMath::Lerp(ArmLength, AimArmLength, AimAlpha);
 		FVector Offset = FMath::Lerp(ShoulderOffset, AimShoulderOffset, AimAlpha);
 		Offset.Y *= ShoulderSide;
-		Boom->SocketOffset = Offset;
+		// Enfoque (remate): cámara cerca y baja, sobre el golpe.
+		Boom->TargetArmLength = FMath::Lerp(Boom->TargetArmLength, 110.f, FocusAlpha);
+		Boom->SocketOffset = FMath::Lerp(Offset, FVector(0.f, 45.f * ShoulderSide, 30.f), FocusAlpha);
 	}
 }
 
@@ -296,6 +298,8 @@ void UTemporalAimComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	// Tiempo real: apuntar se siente igual con la Sobremarcha o el tiempo de reflejo.
 	AimAlpha = FMath::FInterpTo(AimAlpha, bAiming ? 1.f : 0.f, TemporalFX::RealDelta(), BlendSpeed);
 	ShoulderSide = FMath::FInterpTo(ShoulderSide, ShoulderTarget, TemporalFX::RealDelta(), BlendSpeed);
+	FocusTimer = FMath::Max(0.f, FocusTimer - TemporalFX::RealDelta());
+	FocusAlpha = FMath::FInterpTo(FocusAlpha, FocusTimer > 0.f ? 1.f : 0.f, TemporalFX::RealDelta(), FocusTimer > 0.f ? 10.f : 4.f);
 	ApplyCamera();
 	// La velocidad de caminar al apuntar la pone la locomoción (UEntropiaLocomotionComponent).
 
