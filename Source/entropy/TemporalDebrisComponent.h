@@ -51,8 +51,14 @@ public:
 	/** Lo esconde todo (al rearmarse el objeto). */
 	void Hide();
 
-	/** El objeto avisa cada frame si sus pedazos se están rebobinando (y a qué velocidad). */
-	void SetRewinding(bool bInRewinding, float InRewindSpeed = 1.f);
+	/**
+	 * Pone las astillas y el polvo en el tiempo T (segundos desde el golpe). Lo llama el objeto roto cada frame
+	 * con el reloj de sus pedazos: así van juntos al rebobinar, en la Sobremarcha y dentro de una burbuja.
+	 */
+	void SetTime(float NewT);
+
+	/** T para una historia de los pedazos de ShardRecordedSeconds: el polvo vive como máximo Life (lógica pura, probada). */
+	static float TimeFromShardHistory(float ShardRecordedSeconds, float InLife);
 
 	/** Posición de una astilla en el tiempo T: tiro parabólico que se detiene al tocar el piso. */
 	static FVector EvaluateChip(const FDebrisParticle& P, float T, float FloorZ);
@@ -62,8 +68,6 @@ public:
 
 	/** Posición de una nube: se abre hacia afuera y se frena (arrastre del aire). */
 	static FVector EvaluateDust(const FDebrisParticle& P, float T);
-
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
 	void EnsureComponents();
@@ -82,7 +86,5 @@ private:
 	TArray<FDebrisParticle> Dust;
 	float T = 0.f;
 	float FloorHeight = 0.f;
-	float RewindSpeed = 1.f;
 	bool bActive = false;
-	bool bRewinding = false;
 };

@@ -66,20 +66,15 @@ void ATemporalBreakable::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	Invulnerable = FMath::Max(0.f, Invulnerable - DeltaTime);
 
-	// Los escombros siguen a los pedazos: si alguno se rebobina, el polvo también regresa (a su misma velocidad).
+	// Los escombros usan el reloj de los pedazos: su historia grabada crece con el tiempo del mundo (lento en la
+	// Sobremarcha, congelado en una burbuja) y baja al rebobinarlos (a la velocidad que sea). Así van siempre juntos.
 	if (bBroken && Debris)
 	{
-		bool bAnyRewinding = false;
-		float Speed = 1.f;
 		for (const UTemporalRecorderComponent* Recorder : GetShardRecorders())
 		{
-			if (Recorder->IsRewinding())
-			{
-				bAnyRewinding = true;
-				Speed = FMath::Max(Speed, Recorder->RewindSpeed);
-			}
+			Debris->SetTime(Recorder->GetRecordedSeconds());
+			break;
 		}
-		Debris->SetRewinding(bAnyRewinding, Speed);
 	}
 }
 

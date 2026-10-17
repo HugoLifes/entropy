@@ -372,4 +372,17 @@ bool FEntropiaFractureTrianglesFaceOut::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDebrisFollowsShardClock, "Entropia.Debris.FollowsShardClock", EntropiaTestFlags::Flags)
+bool FEntropiaDebrisFollowsShardClock::RunTest(const FString& Parameters)
+{
+	const float Life = 2.5f;
+	// Se rompió hace 5 s: el polvo ya se fue.
+	TestEqual(TEXT("Con 5 s de historia el polvo ya terminó"), UTemporalDebrisComponent::TimeFromShardHistory(5.f, Life), Life, 0.0001f);
+	// Al rebobinar, el polvo NO vuelve hasta que los pedazos regresan a los últimos 2.5 s (van juntos).
+	TestEqual(TEXT("Rebobinando, a los 4 s de historia el polvo sigue sin volver"), UTemporalDebrisComponent::TimeFromShardHistory(4.f, Life), Life, 0.0001f);
+	TestEqual(TEXT("A 1 s del golpe, el polvo está a 1 s del golpe"), UTemporalDebrisComponent::TimeFromShardHistory(1.f, Life), 1.f, 0.0001f);
+	TestEqual(TEXT("Sin historia, el polvo está en el golpe"), UTemporalDebrisComponent::TimeFromShardHistory(-0.1f, Life), 0.f, 0.0001f);
+	return true;
+}
+
 #endif

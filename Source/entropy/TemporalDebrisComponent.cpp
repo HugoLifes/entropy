@@ -23,9 +23,8 @@ namespace EntropiaDebris
 
 UTemporalDebrisComponent::UTemporalDebrisComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
-	// Solo tickea mientras hay escombros que mover.
-	PrimaryComponentTick.bStartWithTickEnabled = false;
+	// No tickea: el objeto roto le pasa el tiempo (el reloj de sus pedazos) con SetTime.
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 FVector UTemporalDebrisComponent::EvaluateChip(const FDebrisParticle& P, float InT, float FloorZ)
@@ -165,17 +164,14 @@ void UTemporalDebrisComponent::Burst(const FVector& ImpactPoint, const FVector& 
 	FloorHeight = FloorZ;
 	T = 0.f;
 	bActive = true;
-	bRewinding = false;
 	ChipMesh->SetVisibility(true);
 	DustMesh->SetVisibility(true);
 	UpdateInstances();
-	SetComponentTickEnabled(true);
 }
 
 void UTemporalDebrisComponent::Hide()
 {
 	bActive = false;
-	bRewinding = false;
 	T = 0.f;
 	if (ChipMesh)
 	{
@@ -189,44 +185,27 @@ void UTemporalDebrisComponent::Hide()
 	}
 	Chips.Reset();
 	Dust.Reset();
-	SetComponentTickEnabled(false);
 }
 
-void UTemporalDebrisComponent::SetRewinding(bool bInRewinding, float InRewindSpeed)
+float UTemporalDebrisComponent::TimeFromShardHistory(float ShardRecordedSeconds, float InLife)
 {
-	bRewinding = bInRewinding;
-	RewindSpeed = FMath::Max(0.1f, InRewindSpeed);
-	if (bActive && bRewinding)
-	{
-		SetComponentTickEnabled(true);
-	}
+	return FMath::Clamp(ShardRecordedSeconds, 0.f, InLife);
 }
 
-void UTemporalDebrisComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UTemporalDebrisComponent::SetTime(float NewT)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!bActive)
 	{
-		SetComponentTickEnabled(false);
 		return;
 	}
-
-	const float RealDelta = TemporalFX::RealDelta();
-	if (bRewinding)
+	NewT = TimeFromShardHistory(NewT, Life);
+	// Solo movemos las instancias si el tiempo cambió (quieto en Life o congelado en una burbuja = gratis).
+	if (FMath::IsNearlyEqual(NewT, T, 0.0005f))
 	{
-		T = FMath::Max(0.f, T - RealDelta * RewindSpeed);
+		return;
 	}
-	else
-	{
-		T = FMath::Min(Life, T + RealDelta);
-	}
+	T = NewT;
 	UpdateInstances();
-
-	// Ya desapareció todo y nadie rebobina: dejamos de tickear (pero recordamos T por si luego rebobinan).
-	if (!bRewinding && T >= Life)
-	{
-		SetComponentTickEnabled(false);
-	}
 }
 
 void UTemporalDebrisComponent::UpdateInstances()
