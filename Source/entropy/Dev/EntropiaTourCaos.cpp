@@ -1,0 +1,418 @@
+// ENTROPÍA · Tour "caos": hacer cosas raras a propósito para buscar errores, fugas y estados rotos.
+
+#include "EntropiaTourComponent.h"
+#include "EntropiaPlayerPowers.h"
+#include "EntropiaRoomsComponent.h"
+#include "TemporalFXSubsystem.h"
+#include "TemporalRecorderComponent.h"
+#include "TemporalSubsystem.h"
+#include "TemporalEnergyComponent.h"
+#include "TemporalHUDWidget.h"
+#include "ObjectInversionComponent.h"
+#include "OverdriveComponent.h"
+#include "TemporalAimComponent.h"
+#include "TimeStopComponent.h"
+#include "TemporalDashComponent.h"
+#include "TemporalHealthComponent.h"
+#include "TemporalReflexRoom.h"
+#include "TemporalDilation.h"
+#include "SlowEyeComponent.h"
+#include "TakedownComponent.h"
+#include "TemporalMannequin.h"
+#include "InverseStepComponent.h"
+#include "EchoGhost.h"
+#include "TimeBubble.h"
+#include "PressurePlateDoor.h"
+#include "TemporalTestChamber.h"
+#include "CrumblePlatform.h"
+#include "TemporalFX.h"
+#include "TemporalBreakable.h"
+#include "TemporalPhysicsLab.h"
+#include "TemporalTurret.h"
+#include "TemporalProjectile.h"
+
+#include "Components/CapsuleComponent.h"
+#include "Components/InputComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
+#include "EngineUtils.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
+#include "GenericPlatform/GenericPlatformMisc.h"
+
+void UEntropiaTourComponent::BuildChaosSteps()
+{
+	auto Add = [this](const TCHAR* Name, float Seconds, TFunction<void()> Action)
+	{
+		TourSteps.Add({ Name, MoveTemp(Action), Seconds });
+	};
+	auto Player = [this]() { return Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0)); };
+	auto BreakAll = [this]()
+	{
+		for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
+		{
+			It->Break(It->GetActorLocation() + FMath::VRand() * 30.f, FMath::VRand());
+		}
+	};
+	auto LookAt = [this, Player](float Pitch)
+	{
+		if (ACharacter* Character = Player())
+		{
+			if (AController* Controller = Character->GetController())
+			{
+				Controller->SetControlRotation(FRotator(Pitch, Controller->GetControlRotation().Yaw, 0.f));
+			}
+		}
+	};
+
+	Add(TEXT("sala4"), 1.5f, [this] { Rooms->GoToRoom(4); });
+	Add(TEXT("spam_z_x10"), 1.5f, [this] { for (int32 i = 0; i < 10; ++i) { Rooms->Fire(); } });
+	Add(TEXT("spam_x_x10"), 1.5f, [this] { for (int32 i = 0; i < 10; ++i) { Rooms->FireInverted(); } });
+	Add(TEXT("romper_todo_x3"), 1.5f, [BreakAll] { BreakAll(); BreakAll(); BreakAll(); });
+	Add(TEXT("spam_b_x10"), 1.f, [this] { for (int32 i = 0; i < 10; ++i) { Rooms->BreakInFront(); } });
+	// Girar la cámara y presionar R en frames distintos (como al jugar): la cámara se actualiza al frame siguiente.
+	Add(TEXT("mirar_cielo"), 0.6f, [LookAt] { LookAt(70.f); });
+	Add(TEXT("r_al_cielo"), 1.f, [this] { if (Powers->Inversion) { Powers->Inversion->BeginInversion(); } });
+	Add(TEXT("r_suelta_y_mira"), 0.6f, [this, LookAt]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		LookAt(-15.f);
+	});
+	// Fase 3: apuntar y soltar muchas veces, e invertir mientras apuntas (la cámara y el giro deben quedar bien).
+	Add(TEXT("apuntar_x11_y_r"), 1.f, [this]
+	{
+		for (int32 i = 0; i < 11; ++i) { if (Powers->Aim) { Powers->Aim->SetAiming(!Powers->Aim->IsAiming()); } }
+		if (Powers->Inversion) { Powers->Inversion->BeginInversion(); }
+	});
+	Add(TEXT("suelta_apuntar"), 0.6f, [this]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+	});
+	Add(TEXT("shiftr_y_romper"), 2.f, [this, BreakAll] { Rooms->RewindAll(true); BreakAll(); Rooms->Fire(); });
+	Add(TEXT("shiftr_suelta"), 0.8f, [this] { Rooms->RewindAll(false); });
+	Add(TEXT("r_y_teletransporte"), 1.2f, [this]
+	{
+		Rooms->RewindAll(true);
+		Rooms->GoToRoom(4);
+		Rooms->GoToRoom(4);
+		Rooms->RewindAll(false);
+	});
+	Add(TEXT("v_toggle_x11"), 1.2f, [this] { for (int32 i = 0; i < 11; ++i) { Powers->ToggleOverdrive(); } });
+	Add(TEXT("v_f_r_juntos"), 1.5f, [this]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		if (Powers->InverseStep) { Powers->InverseStep->BeginInverseStep(); }
+		if (Powers->Inversion) { Powers->Inversion->BeginInversion(); }
+		Rooms->Fire();
+	});
+	Add(TEXT("soltar_todo"), 0.8f, [this]
+	{
+		if (Powers->InverseStep) { Powers->InverseStep->EndInverseStep(); }
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+	});
+	Add(TEXT("spam_q_x8"), 2.5f, [this] { for (int32 i = 0; i < 8; ++i) { Powers->SpawnBubble(); } Rooms->Fire(); });
+	Add(TEXT("sin_energia_f_e_v"), 1.f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = 0.f; }
+		if (Powers->InverseStep) { Powers->InverseStep->BeginInverseStep(); }
+		Powers->CreateEcho();
+		Powers->ToggleOverdrive();
+		Powers->SpawnBubble();
+	});
+	Add(TEXT("spam_e_x6_g"), 1.5f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		for (int32 i = 0; i < 6; ++i) { Powers->CreateEcho(); }
+		Powers->ClearEchoes();
+		Powers->CreateEcho();
+	});
+	Add(TEXT("teletransportes_x5"), 1.2f, [this] { Rooms->GoToRoom(1); Rooms->GoToRoom(2); Rooms->GoToRoom(3); Rooms->GoToRoom(4); Rooms->GoToRoom(0); Rooms->GoToRoom(4); });
+	Add(TEXT("x_y_r_a_la_bala"), 2.f, [this]
+	{
+		Rooms->FireInverted();
+		Rooms->Fire();
+		ATemporalProjectile* Newest = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			if (!Newest || It->GetGameTimeSinceCreation() < Newest->GetGameTimeSinceCreation())
+			{
+				Newest = *It;
+			}
+		}
+		if (Newest && Powers->Inversion) { Powers->Inversion->BeginInversionOn(Newest->Recorder); }
+	});
+	Add(TEXT("rebobinar_largo"), 4.f, [this]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		Rooms->RewindAll(true);
+	});
+	Add(TEXT("fin_rebobinar"), 1.f, [this] { Rooms->RewindAll(false); });
+	Add(TEXT("churn_romper_rearmar"), 2.5f, [this, BreakAll]
+	{
+		for (int32 i = 0; i < 4; ++i)
+		{
+			BreakAll();
+			for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It) { It->Restore(); }
+		}
+		BreakAll();
+	});
+	Add(TEXT("t_cajas_x5"), 1.5f, [this] { for (int32 i = 0; i < 5; ++i) { Rooms->SpawnCubes(); } });
+	// Fase 3 · Detener: más de 3 a la vez, cosas que desaparecen detenidas, invertir algo detenido, burbuja encima.
+	Add(TEXT("detener_x6_y_borrar"), 1.5f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		Rooms->GoToRoom(4);
+		for (int32 i = 0; i < 3; ++i) { Rooms->Fire(); }
+		int32 Count = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It && Count < 6; ++It, ++Count)
+		{
+			if (Powers->TimeStop) { Powers->TimeStop->StopActor(*It); }
+		}
+		for (AActor* Cube : Rooms->Cubes)
+		{
+			if (Powers->TimeStop && IsValid(Cube)) { Powers->TimeStop->StopActor(Cube); }
+		}
+		if (Rooms->PhysicsLab && Rooms->PhysicsLab->GetTurret()) { Rooms->PhysicsLab->GetTurret()->ClearBullets(); }
+	});
+	Add(TEXT("detener_y_r"), 1.5f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		Rooms->Fire();
+		ATemporalProjectile* Newest = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { Newest = *It; }
+		if (Newest && Powers->TimeStop) { Powers->TimeStop->StopActor(Newest); }
+		if (Newest && Powers->Inversion) { Powers->Inversion->BeginInversionOn(Newest->Recorder); }
+		Powers->SpawnBubble();
+	});
+	Add(TEXT("detener_suelta_todo"), 1.f, [this]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	// Fase 3 · Dash: muchos seguidos, con Sobremarcha, y el Paso Inverso a medio dash.
+	Add(TEXT("spam_dash_x10"), 1.f, [this, Player]
+	{
+		if (Player()) { Player()->Jump(); }
+		for (int32 i = 0; i < 10; ++i) { Powers->TryDash(); }
+	});
+	Add(TEXT("dash_v_y_f"), 1.2f, [this]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		Powers->TryDash();
+		if (Powers->InverseStep) { Powers->InverseStep->BeginInverseStep(); }
+	});
+	Add(TEXT("dash_suelta"), 0.8f, [this]
+	{
+		if (Powers->InverseStep) { Powers->InverseStep->EndInverseStep(); }
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+		Powers->TryDash();
+	});
+	// Fase 3 · Todos los tiempos lentos encimados y luego soltar todo: el mundo y el jugador deben volver a 1.
+	Add(TEXT("todo_lento_junto"), 1.5f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		if (Powers->Dash) { Powers->Dash->StartReflex(); }
+		Powers->SpawnBubble();
+		for (int32 i = 0; i < 3; ++i) { Rooms->Fire(); }
+	});
+	Add(TEXT("todo_lento_suelta"), 2.f, [this]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+	});
+	Add(TEXT("todo_lento_revisa"), 0.5f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR todo_lento global=%.2f jugador=%.2f"),
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
+	});
+	// Fase 3 · Ojo lento + burbuja: al dejar de apuntar, las balas siguen congeladas por la burbuja (gana la más lenta).
+	Add(TEXT("ojo_lento_y_burbuja"), 0.3f, [this, Player]
+	{
+		ACharacter* Character = Player();
+		if (!Character)
+		{
+			return;
+		}
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+		const FVector Forward = Character->GetActorForwardVector();
+		const FVector Right = Character->GetActorRightVector();
+		const FVector Chest = Character->GetActorLocation() + FVector(0.f, 0.f, 20.f);
+		SpawnTourBullet(Chest + Forward * 250.f - Right * 150.f, Right);
+		SpawnTourBullet(Chest + Forward * 300.f - Right * 200.f, Right);
+	});
+	Add(TEXT("ojo_lento_burbuja"), 0.6f, [this] { Powers->SpawnBubble(); });
+	Add(TEXT("ojo_lento_suelta"), 0.6f, [this] { if (Powers->Aim) { Powers->Aim->SetAiming(false); } });
+	Add(TEXT("ojo_lento_revisa_burbuja"), 0.5f, [this]
+	{
+		float Fastest = -1.f;
+		for (const TWeakObjectPtr<AActor>& Temp : TourTemps)
+		{
+			if (Temp.IsValid()) { Fastest = FMath::Max(Fastest, Temp->CustomTimeDilation); }
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_lento_burbuja bala_mas_rapida=%.2f (0 = sigue congelada)"), Fastest);
+		ClearTourTemps();
+	});
+	// Fase 3 · Morir a media acción: F, R, Sobremarcha, apuntar y dash a la vez.
+	Add(TEXT("sala5_caos"), 1.f, [this] { Rooms->GoToRoom(5); });
+	Add(TEXT("morir_en_todo"), 1.2f, [this]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+		if (Powers->InverseStep) { Powers->InverseStep->BeginInverseStep(); }
+		if (Powers->Inversion) { Powers->Inversion->BeginInversion(); }
+		if (Powers->Health) { Powers->Health->ApplyDamage(1000.f); }
+		Powers->TryDash();
+	});
+	Add(TEXT("despues_de_morir"), 1.f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR despues_de_morir vida=%.0f global=%.2f jugador=%.2f apuntando=%d"),
+			Powers->Health ? Powers->Health->Health : -1.f, Dilation ? Dilation->GetGlobalDilation() : -1.f,
+			Pawn ? Pawn->CustomTimeDilation : -1.f, Powers->Aim && Powers->Aim->IsAiming() ? 1 : 0);
+	});
+	// Fase 3 · Remates raros: muchos clics, dash y Sobremarcha a la vez, y teletransportarse a medio remate.
+	Add(TEXT("remate_spam"), 1.f, [this]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(30.f); }
+		if (Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().Num() > 0)
+		{
+			if (ATemporalMannequin* Target = Rooms->ReflexRoom->GetMannequins()[0])
+			{
+				if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+				{
+					Pawn->SetActorLocation(Target->GetActorLocation() - Target->GetActorForwardVector() * 120.f, false, nullptr, ETeleportType::TeleportPhysics);
+				}
+			}
+		}
+	});
+	Add(TEXT("remate_x5_dash_v"), 1.f, [this]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		for (int32 i = 0; i < 5; ++i) { Powers->PrimaryAction(); Powers->TryDash(); }
+	});
+	Add(TEXT("remate_y_teletransporte"), 1.f, [this]
+	{
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+		Powers->PrimaryAction();
+		Rooms->GoToRoom(4);
+	});
+	// Revisión final · Ojo lento en Sobremarcha: la bala va a 0.25 (gana la más lenta), no a 0.25 × 0.25.
+	Add(TEXT("ojo_en_sobremarcha"), 0.3f, [this]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(30.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Overdrive) { Powers->Overdrive->StartOverdrive(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+		if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+		{
+			const FVector Forward = Pawn->GetActorForwardVector();
+			const FVector Right = Pawn->GetActorRightVector();
+			SpawnTourBullet(Pawn->GetActorLocation() + FVector(0.f, 0.f, 20.f) + Forward * 250.f - Right * 150.f, Right);
+		}
+	});
+	Add(TEXT("ojo_en_sobremarcha_revisa"), 0.3f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
+		const float Rate = Bullet && Dilation ? Bullet->CustomTimeDilation * Dilation->GetGlobalDilation() : -1.f;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_en_sobremarcha ritmo_bala=%.3f (esperado 0.250)"), Rate);
+		if (Powers->Overdrive) { Powers->Overdrive->StopOverdrive(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		ClearTourTemps();
+	});
+	// Revisión final · Detener a un maniquí que va cayendo: el cuerpo debe quedarse quieto.
+	auto StandBehind = [this](int32 Index, float Distance)
+	{
+		ATemporalMannequin* Target = Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().IsValidIndex(Index) ? Rooms->ReflexRoom->GetMannequins()[Index].Get() : nullptr;
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			Pawn->SetActorLocation(Target->GetActorLocation() - Target->GetActorForwardVector() * Distance, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		return Target;
+	};
+	Add(TEXT("remate_para_detener_cayendo"), 0.35f, [this, StandBehind]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(30.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		StandBehind(0, 120.f);
+		Powers->PrimaryAction();
+	});
+	Add(TEXT("detener_cayendo"), 0.15f, [this]
+	{
+		ATemporalMannequin* Target = Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().Num() > 0 ? Rooms->ReflexRoom->GetMannequins()[0].Get() : nullptr;
+		if (Target && Powers->TimeStop)
+		{
+			Powers->TimeStop->StopActor(Target);
+		}
+	});
+	// La medida empieza un momento después: el congelado se aplica en el siguiente frame del maniquí.
+	Add(TEXT("detener_cayendo_marca"), 0.4f, [this]
+	{
+		ATemporalMannequin* Target = Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().Num() > 0 ? Rooms->ReflexRoom->GetMannequins()[0].Get() : nullptr;
+		if (Target)
+		{
+			TourMark = Target->GetMesh()->GetBoneLocation(TEXT("pelvis"));
+		}
+	});
+	Add(TEXT("detener_cayendo_revisa"), 0.3f, [this]
+	{
+		ATemporalMannequin* Target = Rooms->ReflexRoom && Rooms->ReflexRoom->GetMannequins().Num() > 0 ? Rooms->ReflexRoom->GetMannequins()[0].Get() : nullptr;
+		const float Moved = Target ? FVector::Dist(TourMark, Target->GetMesh()->GetBoneLocation(TEXT("pelvis"))) : -1.f;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR maniqui_cayendo_detenido se_movio=%.1f cm tirado=%d"), Moved, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	// Revisión final · Morir con todo activo (dash, reflejo, algo detenido, remate): al reaparecer no queda nada.
+	Add(TEXT("morir_con_todo_activo"), 0.2f, [this, StandBehind]
+	{
+		Rooms->GoToRoom(5);
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		StandBehind(0, 120.f);
+		Powers->TryDash();
+		if (Powers->Dash) { Powers->Dash->StartReflex(); }
+		if (Powers->TimeStop && Rooms->ReflexRoom && Rooms->ReflexRoom->GetTurrets().Num() > 0) { Powers->TimeStop->StopActor(Rooms->ReflexRoom->GetTurrets()[0]); }
+		Powers->PrimaryAction();
+		if (Powers->Health)
+		{
+			Powers->Health->ClearInvulnerable();
+			Powers->Health->ApplyDamage(1000.f);
+		}
+	});
+	Add(TEXT("morir_con_todo_revisa"), 0.5f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tras_morir_con_todo global=%.2f detenidos=%d dash=%d reflejo=%d remate=%d"),
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Powers->TimeStop ? Powers->TimeStop->NumStopped() : -1,
+			Powers->Dash && Powers->Dash->IsDashing() ? 1 : 0, Powers->Dash && Powers->Dash->IsReflexActive() ? 1 : 0,
+			Powers->Takedown && Powers->Takedown->IsBusy() ? 1 : 0);
+	});
+	Add(TEXT("remate_revisa"), 1.f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_revisa global=%.2f jugador=%.2f"), Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	Add(TEXT("calma"), 2.5f, [] {});
+}

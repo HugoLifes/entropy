@@ -51,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File Tools\run-tour.ps1 -ExtraArgs '-Entropi
 - **Árbitro del tiempo** (`UTemporalDilationSubsystem`): cada poder pide una velocidad de tiempo y gana la más lenta. Así los poderes se combinan sin pisarse.
 - **Fractura propia** (Voronoi) con pedazos que se rebobinan, y escombros y polvo calculados con fórmula (son reversibles exactos).
 - **Distorsión del tiempo**: un post-process con HLSL propio (ondas, burbujas).
-- Todo en `Source/entropy/`. Diseños y planes de cada fase en `docs/superpowers/`. Plan para ordenar el código y aprender: [`docs/plan-modular-y-aprendizaje.md`](docs/plan-modular-y-aprendizaje.md).
+- Código en `Source/entropy/`, por carpetas: `Core/` (tiempo, energía, vida), `Poderes/`, `Mundo/` (salas, destrucción, enemigos de práctica), `FX/` y `Dev/` (banco de pruebas, tours y pruebas). Diseños y planes de cada fase en `docs/superpowers/`. Plan para ordenar el código y aprender: [`docs/plan-modular-y-aprendizaje.md`](docs/plan-modular-y-aprendizaje.md).
 
 ## Hoja de ruta
 
