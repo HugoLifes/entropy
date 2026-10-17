@@ -1,6 +1,7 @@
 // ENTROPÍA · Modo tour normal: recorre las salas y prueba cada poder (capturas + FPS por paso).
 
 #include "EntropiaTourComponent.h"
+#include "EntropiaLocomotionComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -118,6 +119,41 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		const bool bOk = Powers->Dash && Powers->Dash->TryDash();
 		const bool bSecond = Powers->Dash && Powers->Dash->TryDash();
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dash_aire=%d en_aire=%d segundo=%d"), bOk ? 1 : 0, bFalling ? 1 : 0, bSecond ? 1 : 0);
+	});
+	// Fase 3b · Correr (Shift mantenido) y agacharse (C).
+	Add(TEXT("correr"), 1.2f, [this, Player]
+	{
+		if (Powers->Locomotion && Player())
+		{
+			Powers->Locomotion->SetSprint(true);
+			Powers->Locomotion->SetTourInput(-Player()->GetActorRightVector());
+		}
+	});
+	Add(TEXT("correr_revisa"), 0.3f, [this, Player]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR correr velocidad=%.0f"), Player() ? Player()->GetVelocity().Size2D() : -1.f);
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetSprint(false);
+			Powers->Locomotion->SetTourInput(FVector::ZeroVector);
+		}
+	});
+	Add(TEXT("agacharse"), 1.2f, [this, Player]
+	{
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetCrouched(true);
+		}
+	});
+	Add(TEXT("agachado_revisa"), 0.3f, [this, Player]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agachado=%d media_altura=%.0f"),
+			Powers->Locomotion && Powers->Locomotion->IsCrouched() ? 1 : 0,
+			Player() ? Player()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : -1.f);
+		if (Powers->Locomotion)
+		{
+			Powers->Locomotion->SetCrouched(false);
+		}
 	});
 	Add(TEXT("disparo"), 0.9f, [this] { Rooms->Fire(); });
 	Add(TEXT("escombros"), 1.4f, [] {});

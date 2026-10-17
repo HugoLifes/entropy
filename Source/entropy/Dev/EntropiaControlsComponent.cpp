@@ -1,6 +1,7 @@
 // ENTROPÍA · Teclas del banco de pruebas
 
 #include "EntropiaControlsComponent.h"
+#include "EntropiaLocomotionComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -86,6 +87,8 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::RightMouseButton, IE_Released, this, &UEntropiaControlsComponent::OnAimReleased);
 	Input->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &UEntropiaControlsComponent::OnPrimaryPressed);
 	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &UEntropiaControlsComponent::OnDash);
+	Input->BindKey(EKeys::LeftShift, IE_Released, this, &UEntropiaControlsComponent::OnSprintReleased);
+	Input->BindKey(EKeys::C, IE_Pressed, this, &UEntropiaControlsComponent::OnCrouch);
 }
 
 void UEntropiaControlsComponent::ShowHelp() const
@@ -93,7 +96,7 @@ void UEntropiaControlsComponent::ShowHelp() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash (mantener: correr) · C: agacharse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 0: volver a las cajas"));
 	}
@@ -241,6 +244,27 @@ void UEntropiaControlsComponent::OnPrimaryPressed()
 
 void UEntropiaControlsComponent::OnDash()
 {
+	// Shift: el dash sale al presionar; si lo mantienes, sigues corriendo.
 	Powers->TryDash();
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->SetSprint(true);
+	}
+}
+
+void UEntropiaControlsComponent::OnSprintReleased()
+{
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->SetSprint(false);
+	}
+}
+
+void UEntropiaControlsComponent::OnCrouch()
+{
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->ToggleCrouch();
+	}
 }
 

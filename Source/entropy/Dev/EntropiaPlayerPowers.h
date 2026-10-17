@@ -17,6 +17,7 @@ class USlowEyeComponent;
 class UTakedownComponent;
 class UTemporalAimComponent;
 class UTemporalDashComponent;
+class UEntropiaLocomotionComponent;
 class UTemporalEnergyComponent;
 class UTemporalHealthComponent;
 class UTemporalHUDWidget;
@@ -85,6 +86,7 @@ public:
 	UPROPERTY() TObjectPtr<UObjectInversionComponent> Inversion;
 	UPROPERTY() TObjectPtr<UTimeStopComponent> TimeStop;
 	UPROPERTY() TObjectPtr<UTemporalDashComponent> Dash;
+	UPROPERTY() TObjectPtr<UEntropiaLocomotionComponent> Locomotion;
 	UPROPERTY() TObjectPtr<USlowEyeComponent> SlowEye;
 	UPROPERTY() TObjectPtr<UTakedownComponent> Takedown;
 	UPROPERTY() TObjectPtr<UOverdriveComponent> Overdrive;

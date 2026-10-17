@@ -18,6 +18,7 @@
 #include "TemporalHealthComponent.h"
 #include "TemporalCombat.h"
 #include "TakedownComponent.h"
+#include "EntropiaLocomotionComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -595,6 +596,20 @@ bool FEntropiaTakedownCondition::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Por la espalda pero a 2.5 m: no"), UTakedownComponent::CanTakedown(FVector(-250.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
 	TestFalse(TEXT("De lado (90°): no"), UTakedownComponent::CanTakedown(FVector(0.f, 150.f, 0.f), Target, Forward, false, 180.f, 120.f));
 	TestFalse(TEXT("Congelado pero lejos: no"), UTakedownComponent::CanTakedown(FVector(400.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Locomoción
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaLocomotionWalkSpeed, "Entropia.Locomotion.WalkSpeed", EntropiaTestFlags::Flags)
+bool FEntropiaLocomotionWalkSpeed::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Normal: 450"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, false, 0.f), 450.f, 0.01f);
+	TestEqual(TEXT("Corriendo: 700"), UEntropiaLocomotionComponent::ComputeWalkSpeed(true, false, 0.f), 700.f, 0.01f);
+	TestEqual(TEXT("Agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 0.f), 220.f, 0.01f);
+	TestEqual(TEXT("Apuntar gana a correr: 320"), UEntropiaLocomotionComponent::ComputeWalkSpeed(true, false, 1.f), 320.f, 0.01f);
+	TestEqual(TEXT("Agachado apuntando sigue agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 1.f), 220.f, 0.01f);
 	return true;
 }
 

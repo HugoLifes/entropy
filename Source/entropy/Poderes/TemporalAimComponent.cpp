@@ -1,7 +1,6 @@
 // ENTROPÍA · Apuntar y mira
 
 #include "TemporalAimComponent.h"
-#include "TemporalDashComponent.h"
 #include "TemporalProjectile.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
@@ -68,20 +67,6 @@ void UTemporalAimComponent::ApplyCamera()
 	{
 		Boom->TargetArmLength = FMath::Lerp(ArmLength, AimArmLength, AimAlpha);
 		Boom->SocketOffset = FMath::Lerp(ShoulderOffset, AimShoulderOffset, AimAlpha);
-	}
-}
-
-void UTemporalAimComponent::ApplyWalkSpeed()
-{
-	// Durante el dash manda el dash (él devuelve la velocidad al terminar).
-	const UTemporalDashComponent* Dash = GetOwner()->FindComponentByClass<UTemporalDashComponent>();
-	if (Dash && Dash->IsDashing())
-	{
-		return;
-	}
-	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
-	{
-		Character->GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(BaseWalkSpeed, AimWalkSpeed, AimAlpha);
 	}
 }
 
@@ -309,7 +294,7 @@ void UTemporalAimComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	// Tiempo real: apuntar se siente igual con la Sobremarcha o el tiempo de reflejo.
 	AimAlpha = FMath::FInterpTo(AimAlpha, bAiming ? 1.f : 0.f, TemporalFX::RealDelta(), BlendSpeed);
 	ApplyCamera();
-	ApplyWalkSpeed();
+	// La velocidad de caminar al apuntar la pone la locomoción (UEntropiaLocomotionComponent).
 
 	// La selección sigue a la mira, salvo que esté fija.
 	Select(Locked.IsValid() ? Locked.Get() : FindTarget());

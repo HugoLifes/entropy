@@ -97,7 +97,6 @@ private:
 	void Select(AActor* Target);
 	void ClearHighlight();
 	void ApplyCamera();
-	void ApplyWalkSpeed();
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> HighlightMaterial;
