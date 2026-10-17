@@ -10,6 +10,7 @@
 #include "OverdriveComponent.h"
 #include "TemporalAimComponent.h"
 #include "TimeStopComponent.h"
+#include "TemporalDashComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -84,6 +85,7 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &ATemporalSandbox::OnAimPressed);
 			InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &ATemporalSandbox::OnAimReleased);
 			InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &ATemporalSandbox::OnPrimaryPressed);
+			InputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &ATemporalSandbox::OnDash);
 		}
 	}
 
@@ -114,6 +116,7 @@ void ATemporalSandbox::Setup()
 		PlayerAim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("PlayerAim"));
 		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		PlayerTimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("PlayerTimeStop"));
+		PlayerDash = TemporalFX::FindOrAddComponent<UTemporalDashComponent>(Pawn, TEXT("PlayerDash"));
 		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
 		// Barra de energía en pantalla.
@@ -320,7 +323,7 @@ void ATemporalSandbox::ShowHelp()
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
 	}
@@ -416,6 +419,14 @@ void ATemporalSandbox::OnPrimaryPressed()
 	if (PlayerTimeStop)
 	{
 		PlayerTimeStop->StopAimed();
+	}
+}
+
+void ATemporalSandbox::OnDash()
+{
+	if (PlayerDash)
+	{
+		PlayerDash->TryDash();
 	}
 }
 
@@ -610,14 +621,25 @@ void ATemporalSandbox::StartTour()
 			PlayerAim->SetAiming(true);
 		}
 	});
-	Add(TEXT("disparo"), 0.9f, [this]
+	// Fase 3 · Dash: uno en el piso (la captura sale a medio dash, con estela) y uno en el aire.
+	Add(TEXT("dash"), 0.25f, [this]
 	{
 		if (PlayerAim)
 		{
 			PlayerAim->SetAiming(false);
 		}
-		OnFire();
+		const bool bOk = PlayerDash && PlayerDash->TryDash();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dash=%d"), bOk ? 1 : 0);
 	});
+	Add(TEXT("salto"), 0.7f, [Player] { if (ACharacter* Character = Player()) { Character->Jump(); } });
+	Add(TEXT("dash_aire"), 0.8f, [this, Player]
+	{
+		const bool bFalling = Player() && Player()->GetCharacterMovement()->IsFalling();
+		const bool bOk = PlayerDash && PlayerDash->TryDash();
+		const bool bSecond = PlayerDash && PlayerDash->TryDash();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dash_aire=%d en_aire=%d segundo=%d"), bOk ? 1 : 0, bFalling ? 1 : 0, bSecond ? 1 : 0);
+	});
+	Add(TEXT("disparo"), 0.9f, [this] { OnFire(); });
 	Add(TEXT("escombros"), 1.4f, [] {});
 	Add(TEXT("invertir_bala"), 2.6f, [this, NewestBullet]
 	{
@@ -965,6 +987,24 @@ void ATemporalSandbox::BuildChaosSteps()
 	{
 		if (PlayerInversion) { PlayerInversion->EndInversion(); }
 		if (PlayerTimeStop) { PlayerTimeStop->ReleaseAll(); }
+	});
+	// Fase 3 · Dash: muchos seguidos, con Sobremarcha, y el Paso Inverso a medio dash.
+	Add(TEXT("spam_dash_x10"), 1.f, [this, Player]
+	{
+		if (Player()) { Player()->Jump(); }
+		for (int32 i = 0; i < 10; ++i) { OnDash(); }
+	});
+	Add(TEXT("dash_v_y_f"), 1.2f, [this]
+	{
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		OnDash();
+		if (PlayerInverseStep) { PlayerInverseStep->BeginInverseStep(); }
+	});
+	Add(TEXT("dash_suelta"), 0.8f, [this]
+	{
+		if (PlayerInverseStep) { PlayerInverseStep->EndInverseStep(); }
+		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
+		OnDash();
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

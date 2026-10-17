@@ -15,6 +15,7 @@
 //   R / Ctrl+R   = R invierte solo lo que apuntas; Ctrl+R rebobina todo (pruebas)
 //   Clic derecho = apuntar (cámara al hombro; la mira selecciona)
 //   Clic izq.    = Detener lo que tienes en la mira (4 s; otro clic lo suelta)
+//   Shift        = dash (también en el aire, uno por salto)
 // Modo tour: con -EntropiaTour en la línea de comandos recorre las salas solo, usa los poderes,
 // registra los FPS (ENTROPIA_TOUR en el log), toma capturas en Saved/Tour/ y cierra el juego.
 // También crea el cuarto de pruebas (ATemporalTestChamber) y la sala de física (ATemporalPhysicsLab) flotando sobre el Sandbox.
@@ -33,6 +34,7 @@ class UObjectInversionComponent;
 class UOverdriveComponent;
 class UTemporalAimComponent;
 class UTimeStopComponent;
+class UTemporalDashComponent;
 
 /** Un paso del modo tour: qué hacer y cuánto esperar (segundos reales). */
 struct FEntropiaTourStep
@@ -144,6 +146,7 @@ private:
 	void OnAimPressed();
 	void OnAimReleased();
 	void OnPrimaryPressed();
+	void OnDash();
 	/** Modo tour (pruebas automáticas en juego). */
 	void StartTour();
 	void BuildChaosSteps();
@@ -184,6 +187,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UTimeStopComponent> PlayerTimeStop;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalDashComponent> PlayerDash;
 
 	/** La R actual se pulsó con Ctrl (rebobinar todo) y no como Invertir objeto. */
 	bool bRewindingAll = false;

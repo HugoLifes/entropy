@@ -1,6 +1,7 @@
 // ENTROPÍA · Apuntar y mira
 
 #include "TemporalAimComponent.h"
+#include "TemporalDashComponent.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -70,6 +71,12 @@ void UTemporalAimComponent::ApplyCamera()
 
 void UTemporalAimComponent::ApplyWalkSpeed()
 {
+	// Durante el dash manda el dash (él devuelve la velocidad al terminar).
+	const UTemporalDashComponent* Dash = GetOwner()->FindComponentByClass<UTemporalDashComponent>();
+	if (Dash && Dash->IsDashing())
+	{
+		return;
+	}
 	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
 	{
 		Character->GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(BaseWalkSpeed, AimWalkSpeed, AimAlpha);

@@ -14,6 +14,7 @@
 #include "TemporalFXSubsystem.h"
 #include "TemporalTrailComponent.h"
 #include "TemporalDilation.h"
+#include "TemporalDashComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -460,6 +461,31 @@ bool FEntropiaDilationPlayerCompensation::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Mundo a 0.25: el jugador va x4 para verse normal"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 0.25f), 4.f, 0.0001f);
 	TestEqual(TEXT("Jugador congelado sigue congelado"), UTemporalDilationSubsystem::PlayerTimeFor(0.f, 0.25f), 0.f, 0.0001f);
 	TestEqual(TEXT("Sin cámara lenta: 1"), UTemporalDilationSubsystem::PlayerTimeFor(1.f, 1.f), 1.f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 · Dash
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDashDirection, "Entropia.Dash.DirectionFallsBackToFacing", EntropiaTestFlags::Flags)
+bool FEntropiaDashDirection::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Quieto: dash hacia donde miras"),
+		UTemporalDashComponent::ComputeDashDirection(FVector::ZeroVector, FVector(0.f, 1.f, 0.f)).Equals(FVector(0.f, 1.f, 0.f), 0.001f));
+	TestTrue(TEXT("Moviéndote: hacia donde te mueves, plano y normalizado"),
+		UTemporalDashComponent::ComputeDashDirection(FVector(3.f, 0.f, 1.f), FVector(0.f, 1.f, 0.f)).Equals(FVector(1.f, 0.f, 0.f), 0.001f));
+	TestTrue(TEXT("Mirando hacia arriba: el dash sigue siendo horizontal"),
+		UTemporalDashComponent::ComputeDashDirection(FVector::ZeroVector, FVector(0.6f, 0.f, 0.8f)).Equals(FVector(1.f, 0.f, 0.f), 0.001f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDashCooldown, "Entropia.Dash.CooldownAndAirDash", EntropiaTestFlags::Flags)
+bool FEntropiaDashCooldown::RunTest(const FString& Parameters)
+{
+	TestFalse(TEXT("En recarga no hay dash"), UTemporalDashComponent::CanDash(0.3f, 0.6f, false, false));
+	TestTrue(TEXT("Pasada la recarga, sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, false, false));
+	TestFalse(TEXT("En el aire, solo uno por salto"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, true));
+	TestTrue(TEXT("En el aire, el primero sí"), UTemporalDashComponent::CanDash(0.7f, 0.6f, true, false));
 	return true;
 }
 
