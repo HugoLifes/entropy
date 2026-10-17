@@ -9,6 +9,13 @@
 #include "GameFramework/Character.h"
 #include "UObject/Package.h"
 
+#if WITH_EDITOR
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Misc/DelayedAutoRegister.h"
+#include "Misc/PackageName.h"
+#include "UObject/SavePackage.h"
+#endif
+
 namespace EntropiaAnim
 {
 	const TCHAR* SetObjectPath = TEXT("/Game/Entropia/Datos/DA_Animaciones.DA_Animaciones");
@@ -150,3 +157,42 @@ namespace EntropiaAnim
 		return Anim->IsPlayingSlotAnimation(Asset, TEXT("DefaultSlot"));
 	}
 }
+
+#if WITH_EDITOR
+namespace EntropiaAnimSetEditor
+{
+	const TCHAR* SetPackage = TEXT("/Game/Entropia/Datos/DA_Animaciones");
+
+	/** Crea DA_Animaciones con las animaciones provisionales, si todavía no existe (Hugo lo edita en el editor). */
+	void CreateAnimationSetIfMissing()
+	{
+		if (FPackageName::DoesPackageExist(SetPackage))
+		{
+			return;
+		}
+		UPackage* Package = CreatePackage(SetPackage);
+		UEntropiaAnimationSet* Set = NewObject<UEntropiaAnimationSet>(Package, TEXT("DA_Animaciones"), RF_Public | RF_Standalone);
+		FAssetRegistryModule::AssetCreated(Set);
+		Package->MarkPackageDirty();
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		const FString Filename = FPackageName::LongPackageNameToFilename(SetPackage, FPackageName::GetAssetPackageExtension());
+		if (UPackage::SavePackage(Package, Set, *Filename, Args))
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: creado %s"), SetPackage);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ENTROPIA: no se pudo guardar %s"), SetPackage);
+		}
+	}
+
+	FDelayedAutoRegisterHelper GCreateEntropiaAnimationSet(EDelayedRegisterRunPhase::EndOfEngineInit, []
+	{
+		if (!IsRunningCommandlet())
+		{
+			CreateAnimationSetIfMissing();
+		}
+	});
+}
+#endif

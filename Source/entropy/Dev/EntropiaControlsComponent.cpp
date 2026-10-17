@@ -103,7 +103,9 @@ void UEntropiaControlsComponent::ShowHelp() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: golpe (apuntando: detener) · Shift: dash (mantener: correr) · C: agacharse o cubrirse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: agarrar · H: eco · G: borrar ecos · Q: burbuja (N: nivel 2 = detener todo) · T: soltar cajas"));
+			TEXT("MOVERSE · Shift: dash (mantener: correr) · Espacio: saltar o parkour (vallas, subir, trepar, orillas) · C: agacharse o cubrirse (colgado: soltarse) · Clic der.: apuntar"));
+		GEngine->AddOnScreenDebugMessage(1001, 40.f, FColor(120, 220, 255),
+			TEXT("PELEA Y PODERES · Clic izq.: golpes (apuntando: detener) · E: agarrar · F: Paso Inverso · R: invertir · Ctrl+R: todo · V: Sobremarcha · Q: burbuja (N: nivel 2 = detener todo) · H: eco · G: borrar ecos · T: cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 0: volver a las cajas"));
 	}
