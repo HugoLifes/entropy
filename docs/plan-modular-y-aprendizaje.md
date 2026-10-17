@@ -18,8 +18,8 @@ Cada paso compila, pasa las pruebas y los dos tours antes de seguir. El juego no
 
 | # | Paso | Para qué |
 |---|---|---|
-| 1 | **Carpetas:** `Core/` (Registro, árbitro, energía, vida), `Poderes/`, `Mundo/` (salas, rompibles, balas, torretas, maniquí), `FX/` (distorsión, estela, HUD), `Dev/` (Sandbox, tours, pruebas) | Encontrar las cosas rápido |
-| 2 | **Partir el Sandbox:** las teclas a un componente `UEntropiaInputComponent`; los tours a `EntropiaTourNormal.cpp` y `EntropiaTourCaos.cpp`; crear las salas en un `UEntropiaRoomsSubsystem` | Que cada archivo haga una sola cosa |
+| 1 ✅ | **Carpetas:** `Core/` (Registro, árbitro, energía, vida), `Poderes/`, `Mundo/` (salas, rompibles, balas, torretas, maniquí), `FX/` (distorsión, estela, HUD), `Dev/` (Sandbox, tours, pruebas) | Encontrar las cosas rápido |
+| 2 ✅ | **Partir el Sandbox:** teclas en `UEntropiaControlsComponent`, poderes del jugador en `UEntropiaPlayerPowers`, salas en `UEntropiaRoomsComponent`, tours en `UEntropiaTourComponent` (`EntropiaTourNormal.cpp` y `EntropiaTourCaos.cpp`) | Que cada archivo haga una sola cosa |
 | 3 | **Clase base de poder** `UTemporalPowerComponent`: costo, iniciar/terminar, color en la barra, "no se puede ahora" | Cada poder nuevo (los de JoJo) se hace copiando un patrón |
 | 4 | **Ajustes en el editor:** un Data Asset `DA_Poderes` con todos los números (dash, Detener, reflejo, Ojo lento, vida…) | **Tú** ajustas sin compilar |
 | 5 | **Blueprints hijos:** `BP_Maniqui`, `BP_Torreta`, `BP_Burbuja`, `BP_Bala` | **Tú** cambias mallas, colores y efectos desde el editor |
