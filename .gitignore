@@ -25,3 +25,6 @@ Plugins/*/Intermediate/
 
 # Grafo de graphify (se regenera con /graphify)
 graphify-out/
+
+# Espacio de trabajo de superpowers (planes en ejecución)
+.superpowers/
