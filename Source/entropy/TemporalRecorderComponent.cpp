@@ -2,6 +2,7 @@
 
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
+#include "Misc/App.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Actor.h"
@@ -98,9 +99,9 @@ void UTemporalRecorderComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		RecordFrame(DeltaTime);
 		break;
 	case ETemporalState::Rewinding:
-		// DeltaTime ya viene multiplicado por CustomTimeDilation (0 dentro de una burbuja de estasis).
-		// Usamos el mayor de los dos: las burbujas no frenan el rebobinado, pero acelerarte (Sandevistan) sí cuenta.
-		RewindStep(bRewindIgnoresTimeDilation ? FMath::Max(DeltaTime, GetWorld()->GetDeltaSeconds()) : DeltaTime);
+		// DeltaTime ya viene multiplicado por la dilatación (0 dentro de una burbuja; 0.25 con la Sobremarcha).
+		// Usamos el mayor entre ese y el tiempo real: ni las burbujas ni la Sobremarcha frenan tu rebobinado.
+		RewindStep(bRewindIgnoresTimeDilation ? FMath::Max(DeltaTime, FApp::GetDeltaTime()) : DeltaTime);
 		break;
 	default:
 		break;

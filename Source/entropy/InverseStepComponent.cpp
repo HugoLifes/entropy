@@ -2,6 +2,7 @@
 
 #include "InverseStepComponent.h"
 #include "ObjectInversionComponent.h"
+#include "OverdriveComponent.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
@@ -104,6 +105,11 @@ bool UInverseStepComponent::BeginInverseStep()
 	if (UObjectInversionComponent* Inversion = GetOwner()->FindComponentByClass<UObjectInversionComponent>())
 	{
 		Inversion->EndInversion();
+	}
+	// Tampoco con la Sobremarcha: mezclar las dos dilataciones y los dos efectos se ve y se siente raro.
+	if (UOverdriveComponent* Overdrive = GetOwner()->FindComponentByClass<UOverdriveComponent>())
+	{
+		Overdrive->StopOverdrive();
 	}
 
 	bActive = true;

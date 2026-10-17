@@ -71,7 +71,7 @@ public:
 	bool bInvertMomentumOnRelease = false;
 
 	/**
-	 * Regla Inverso + Brecha: el rebobinado no se frena dentro de una burbuja (usa el tiempo del mundo).
+	 * Regla Inverso + Brecha: el rebobinado no se frena dentro de una burbuja ni con la Sobremarcha (usa el tiempo real).
 	 * Así un objeto congelado sí regresa al pasado con R, y se queda congelado ahí hasta que la burbuja termine.
 	 * Si lo apagas, un objeto congelado no puede rebobinarse (su tiempo vale 0).
 	 */

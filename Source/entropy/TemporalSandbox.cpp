@@ -6,6 +6,7 @@
 #include "TemporalEnergyComponent.h"
 #include "TemporalHUDWidget.h"
 #include "ObjectInversionComponent.h"
+#include "OverdriveComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -67,6 +68,7 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &ATemporalSandbox::OnFire);
 			InputComponent->BindKey(EKeys::X, IE_Pressed, this, &ATemporalSandbox::OnFireInverted);
 			InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ATemporalSandbox::OnBreakInFront);
+			InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ATemporalSandbox::OnOverdrive);
 		}
 	}
 
@@ -94,6 +96,7 @@ void ATemporalSandbox::Setup()
 		}
 
 		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
+		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
 		// Barra de energía en pantalla.
 		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
@@ -356,6 +359,14 @@ void ATemporalSandbox::OnRewindReleased()
 		{
 			Recorder->StopRewind();
 		}
+	}
+}
+
+void ATemporalSandbox::OnOverdrive()
+{
+	if (PlayerOverdrive)
+	{
+		PlayerOverdrive->Toggle();
 	}
 }
 

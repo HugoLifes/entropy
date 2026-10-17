@@ -11,6 +11,8 @@
 //   4            = ir a la sala 4 · Física (torreta y objetos rompibles)
 //   Z / X        = la torreta de la sala 4 dispara una bala normal / una bala invertida
 //   B            = romper el objeto rompible que tengas enfrente
+//   V            = Sobremarcha: el mundo lento y tú normal (prende/apaga)
+//   R / Shift+R  = R invierte solo lo que apuntas; Shift+R rebobina todo (pruebas)
 // También crea el cuarto de pruebas (ATemporalTestChamber) y la sala de física (ATemporalPhysicsLab) flotando sobre el Sandbox.
 
 #pragma once
@@ -24,6 +26,7 @@ class UInverseStepComponent;
 class UTemporalEnergyComponent;
 class UTemporalHUDWidget;
 class UObjectInversionComponent;
+class UOverdriveComponent;
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
@@ -121,6 +124,7 @@ private:
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();
+	void OnOverdrive();
 	/** Antes de teletransportar al jugador: soltar F y R. */
 	void EndPlayerPowersForTeleport();
 	TArray<AActor*> GatherRewindables() const;
@@ -145,6 +149,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UObjectInversionComponent> PlayerInversion;
+
+	UPROPERTY()
+	TObjectPtr<UOverdriveComponent> PlayerOverdrive;
 
 	/** La R actual se pulsó con Shift (rebobinar todo) y no como Invertir objeto. */
 	bool bRewindingAll = false;

@@ -8,6 +8,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Components/PrimitiveComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/App.h"
 
 ATimeBubble::ATimeBubble()
 {
@@ -50,11 +51,8 @@ void ATimeBubble::BeginPlay()
 	{
 		Affect(Actor);
 	}
-
-	if (LifeSeconds > 0.f)
-	{
-		SetLifeSpan(LifeSeconds);
-	}
+	// La vida se cuenta en Tick con tiempo real (no SetLifeSpan): con la Sobremarcha el mundo va lento,
+	// pero tus poderes duran lo mismo de siempre.
 }
 
 void ATimeBubble::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -77,7 +75,12 @@ void ATimeBubble::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// Visual: crece rápido al aparecer y se encoge en los últimos 0.3 s. La esfera básica mide 100 cm.
-	Age += DeltaTime;
+	Age += FApp::GetDeltaTime();
+	if (LifeSeconds > 0.f && Age >= LifeSeconds)
+	{
+		Destroy();
+		return;
+	}
 	float Grow = FMath::Clamp(Age / 0.25f, 0.f, 1.f);
 	Grow = 1.f - FMath::Square(1.f - Grow);
 	if (LifeSeconds > 0.f)
