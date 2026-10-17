@@ -3,6 +3,8 @@
 #include "TemporalSandbox.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
+#include "TemporalEnergyComponent.h"
+#include "TemporalHUDWidget.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -80,11 +82,25 @@ void ATemporalSandbox::Setup()
 			PlayerRecorder->RegisterComponent();
 		}
 
+		// La energía va primero: todos los poderes la buscan al empezar.
+		PlayerEnergy = TemporalFX::FindOrAddComponent<UTemporalEnergyComponent>(Pawn, TEXT("PlayerTemporalEnergy"));
+
 		PlayerInverseStep = Pawn->FindComponentByClass<UInverseStepComponent>();
 		if (!PlayerInverseStep)
 		{
 			PlayerInverseStep = NewObject<UInverseStepComponent>(Pawn, TEXT("PlayerInverseStep"));
 			PlayerInverseStep->RegisterComponent();
+		}
+
+		// Barra de energía en pantalla.
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+		{
+			EnergyHUD = CreateWidget<UTemporalHUDWidget>(PC, UTemporalHUDWidget::StaticClass());
+			if (EnergyHUD)
+			{
+				EnergyHUD->SetEnergy(PlayerEnergy);
+				EnergyHUD->AddToViewport();
+			}
 		}
 	}
 
@@ -325,6 +341,11 @@ void ATemporalSandbox::OnEcho()
 	{
 		return;
 	}
+	if (PlayerEnergy && !PlayerEnergy->Spend(EchoCost))
+	{
+		PlayerEnergy->Deny();
+		return;
+	}
 
 	ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 	const TArray<FTemporalFrame> Frames = PlayerRecorder->GetRecording();
@@ -380,6 +401,11 @@ void ATemporalSandbox::OnBubble()
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
 	if (!Pawn)
 	{
+		return;
+	}
+	if (PlayerEnergy && !PlayerEnergy->Spend(BubbleCost))
+	{
+		PlayerEnergy->Deny();
 		return;
 	}
 

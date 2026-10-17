@@ -21,6 +21,8 @@
 
 class UTemporalRecorderComponent;
 class UInverseStepComponent;
+class UTemporalEnergyComponent;
+class UTemporalHUDWidget;
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
@@ -57,6 +59,13 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Entropia", meta = (ClampMin = "1"))
 	float BubbleSeconds = 5.f;
+
+	/** Energía que cuesta cada burbuja (Q) y cada eco (E). */
+	UPROPERTY(EditAnywhere, Category = "Entropia|Energia", meta = (ClampMin = "0"))
+	float BubbleCost = 30.f;
+
+	UPROPERTY(EditAnywhere, Category = "Entropia|Energia", meta = (ClampMin = "0"))
+	float EchoCost = 10.f;
 
 	/** Crea el cuarto de pruebas con las 3 salas (Eco, Inverso, Brecha). */
 	UPROPERTY(EditAnywhere, Category = "Entropia")
@@ -124,6 +133,12 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UInverseStepComponent> PlayerInverseStep;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalEnergyComponent> PlayerEnergy;
+
+	UPROPERTY()
+	TObjectPtr<UTemporalHUDWidget> EnergyHUD;
 
 	UPROPERTY()
 	TObjectPtr<ATemporalTestChamber> Chamber;

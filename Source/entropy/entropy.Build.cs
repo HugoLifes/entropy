@@ -19,6 +19,7 @@ public class entropy : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
+			"SlateCore",
 			"Niagara"
 		});
 
