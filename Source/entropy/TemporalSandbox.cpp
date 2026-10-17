@@ -12,6 +12,8 @@
 #include "TimeStopComponent.h"
 #include "TemporalDashComponent.h"
 #include "TemporalHealthComponent.h"
+#include "TemporalReflexRoom.h"
+#include "TemporalDilation.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -79,6 +81,7 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &ATemporalSandbox::OnRoom3);
 			InputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &ATemporalSandbox::OnBackToStart);
 			InputComponent->BindKey(EKeys::Four, IE_Pressed, this, &ATemporalSandbox::OnRoom4);
+			InputComponent->BindKey(EKeys::Five, IE_Pressed, this, &ATemporalSandbox::OnRoom5);
 			InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &ATemporalSandbox::OnFire);
 			InputComponent->BindKey(EKeys::X, IE_Pressed, this, &ATemporalSandbox::OnFireInverted);
 			InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ATemporalSandbox::OnBreakInFront);
@@ -106,6 +109,7 @@ void ATemporalSandbox::Setup()
 		// La energía va primero: todos los poderes la buscan al empezar.
 		PlayerEnergy = TemporalFX::FindOrAddComponent<UTemporalEnergyComponent>(Pawn, TEXT("PlayerTemporalEnergy"));
 		PlayerHealth = TemporalFX::FindOrAddComponent<UTemporalHealthComponent>(Pawn, TEXT("PlayerHealth"));
+		PlayerHealth->OnDeath.AddUObject(this, &ATemporalSandbox::OnPlayerDied);
 
 		PlayerInverseStep = Pawn->FindComponentByClass<UInverseStepComponent>();
 		if (!PlayerInverseStep)
@@ -164,6 +168,14 @@ void ATemporalSandbox::Setup()
 		PhysicsLab = GetWorld()->SpawnActor<ATemporalPhysicsLab>(ATemporalPhysicsLab::StaticClass(), LabTransform, Params);
 	}
 
+	if (bSpawnReflexRoom)
+	{
+		FActorSpawnParameters Params;
+		Params.Owner = this;
+		const FTransform RoomTransform(FRotator(0.f, GetActorRotation().Yaw, 0.f), GetActorLocation() + GetActorRotation().RotateVector(ReflexRoomOffset));
+		ReflexRoom = GetWorld()->SpawnActor<ATemporalReflexRoom>(ATemporalReflexRoom::StaticClass(), RoomTransform, Params);
+	}
+
 	if (FParse::Param(FCommandLine::Get(), TEXT("EntropiaTour")))
 	{
 		StartTour();
@@ -197,6 +209,48 @@ void ATemporalSandbox::OnRoom4()
 		EndPlayerPowersForTeleport();
 		OnClearEchoes();
 		PhysicsLab->TeleportPlayerHere();
+	}
+}
+
+void ATemporalSandbox::OnRoom5()
+{
+	if (ReflexRoom)
+	{
+		EndPlayerPowersForTeleport();
+		OnClearEchoes();
+		ReflexRoom->TeleportPlayerHere();
+	}
+}
+
+void ATemporalSandbox::OnPlayerDied()
+{
+	GetWorldTimerManager().SetTimerForNextTick(this, &ATemporalSandbox::RespawnAfterDeath);
+}
+
+void ATemporalSandbox::RespawnAfterDeath()
+{
+	// Morir suelta todo: F, R, Sobremarcha y apuntar (nada queda pegado al reaparecer).
+	EndPlayerPowersForTeleport();
+	if (PlayerOverdrive)
+	{
+		PlayerOverdrive->StopOverdrive();
+	}
+	if (PlayerAim)
+	{
+		PlayerAim->SetAiming(false);
+	}
+	OnClearEchoes();
+	if (ReflexRoom)
+	{
+		ReflexRoom->RespawnPlayer();
+	}
+	else
+	{
+		OnBackToStart();
+		if (PlayerHealth)
+		{
+			PlayerHealth->ResetHealth();
+		}
 	}
 }
 
@@ -328,7 +382,7 @@ void ATemporalSandbox::ShowHelp()
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
 			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
-			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
+			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 0: volver a las cajas"));
 	}
 }
 
@@ -700,6 +754,33 @@ void ATemporalSandbox::StartTour()
 		OnBubble();
 		OnFire();
 	});
+	// Fase 3 · Sala 5: las torretas te siguen y disparan; morir te regresa a la entrada con la vida llena.
+	Add(TEXT("sala5"), 3.f, [this] { OnRoom5(); });
+	Add(TEXT("recibir_balas"), 2.5f, [this, Player]
+	{
+		// Un paso al frente, a la vista de las tres torretas.
+		if (ReflexRoom && Player())
+		{
+			Player()->SetActorLocation(ReflexRoom->RoomToWorld(FVector(700.f, 0.f, 120.f)), false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	});
+	Add(TEXT("muerte_reaparece"), 1.5f, [this]
+	{
+		const float Before = PlayerHealth ? PlayerHealth->Health : -1.f;
+		if (PlayerHealth)
+		{
+			PlayerHealth->ApplyDamage(PlayerHealth->Health);
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR vida_antes=%.0f"), Before);
+	});
+	Add(TEXT("reaparecio"), 1.f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR reaparecio vida=%.0f muerto=%d global=%.2f jugador=%.2f"),
+			PlayerHealth ? PlayerHealth->Health : -1.f, PlayerHealth && PlayerHealth->IsDead() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		GoToRoom(1);
@@ -1008,6 +1089,26 @@ void ATemporalSandbox::BuildChaosSteps()
 		if (PlayerInverseStep) { PlayerInverseStep->EndInverseStep(); }
 		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
 		OnDash();
+	});
+	// Fase 3 · Morir a media acción: F, R, Sobremarcha, apuntar y dash a la vez.
+	Add(TEXT("sala5_caos"), 1.f, [this] { OnRoom5(); });
+	Add(TEXT("morir_en_todo"), 1.2f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		if (PlayerAim) { PlayerAim->SetAiming(true); }
+		if (PlayerInverseStep) { PlayerInverseStep->BeginInverseStep(); }
+		if (PlayerInversion) { PlayerInversion->BeginInversion(); }
+		if (PlayerHealth) { PlayerHealth->ApplyDamage(1000.f); }
+		OnDash();
+	});
+	Add(TEXT("despues_de_morir"), 1.f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR despues_de_morir vida=%.0f global=%.2f jugador=%.2f apuntando=%d"),
+			PlayerHealth ? PlayerHealth->Health : -1.f, Dilation ? Dilation->GetGlobalDilation() : -1.f,
+			Pawn ? Pawn->CustomTimeDilation : -1.f, PlayerAim && PlayerAim->IsAiming() ? 1 : 0);
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

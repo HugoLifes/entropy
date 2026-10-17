@@ -9,6 +9,7 @@
 //   1 / 2 / 3    = ir a la sala de Eco / Inverso / Brecha del cuarto de pruebas
 //   0            = regresar a donde empezaste (las cajas)
 //   4            = ir a la sala 4 · Física (torreta y objetos rompibles)
+//   5            = ir a la sala 5 · Reflejos (torretas que te siguen, maniquíes para rematar)
 //   Z / X        = la torreta de la sala 4 dispara una bala normal / una bala invertida
 //   B            = romper el objeto rompible que tengas enfrente
 //   V            = Sobremarcha: el mundo lento y tú normal (prende/apaga)
@@ -47,6 +48,7 @@ struct FEntropiaTourStep
 class AEchoGhost;
 class ATemporalTestChamber;
 class ATemporalPhysicsLab;
+class ATemporalReflexRoom;
 
 UCLASS(meta = (DisplayName = "Temporal Sandbox"))
 class ENTROPY_API ATemporalSandbox : public AActor
@@ -104,6 +106,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	FVector PhysicsLabOffset = FVector(0.f, 3500.f, 3000.f);
 
+	/** Crea la sala 5 · Reflejos (torretas que te siguen, columnas, maniquíes). */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	bool bSpawnReflexRoom = true;
+
+	/** Dónde aparece la sala 5 respecto al Sandbox (cm). Del otro lado del cuarto de pruebas. */
+	UPROPERTY(EditAnywhere, Category = "Entropia")
+	FVector ReflexRoomOffset = FVector(0.f, -3500.f, 3000.f);
+
 	/** Empezar el Play dentro de la sala 1. */
 	UPROPERTY(EditAnywhere, Category = "Entropia")
 	bool bStartInChamber = true;
@@ -140,6 +150,10 @@ private:
 	void GoToRoom(int32 RoomIndex);
 	void OnBackToStart();
 	void OnRoom4();
+	void OnRoom5();
+	/** La vida llegó a 0: al siguiente frame reapareces (no en medio del golpe de la bala). */
+	void OnPlayerDied();
+	void RespawnAfterDeath();
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();
@@ -203,6 +217,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ATemporalPhysicsLab> PhysicsLab;
+
+	UPROPERTY()
+	TObjectPtr<ATemporalReflexRoom> ReflexRoom;
 
 	FVector PlayerStartLocation = FVector::ZeroVector;
 
