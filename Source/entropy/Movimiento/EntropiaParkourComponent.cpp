@@ -200,6 +200,7 @@ bool UEntropiaParkourComponent::TryStart()
 	Elapsed = 0.f;
 	Duration = EntropiaParkour::Duration(Kind);
 	PathStart = Character->GetActorLocation();
+	LastPathPoint = PathStart;
 	PathEdge = Edge;
 	PathEnd = (Kind == EEntropiaTraversal::DashVault || Kind == EEntropiaTraversal::Kong) ? Landing : Top;
 	ExitDirection = Into;
@@ -381,6 +382,7 @@ bool UEntropiaParkourComponent::TryClimbFromHang()
 	Elapsed = 0.f;
 	Duration = EntropiaParkour::Duration(Current);
 	PathStart = Character->GetActorLocation();
+	LastPathPoint = PathStart;
 	PathEdge = LedgeEdge;
 	PathEnd = TopStand;
 	ExitDirection = LedgeInto;
@@ -467,6 +469,14 @@ void UEntropiaParkourComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 			Cancel();
 			return;
 		}
+		// La orilla ya no está (se rompió, se movió, se rebobinó) o algo te movió de golpe (una prensa): te sueltas.
+		const float Radius = Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
+		const FVector HangSpot = LedgeEdge - LedgeInto * (Radius + 5.f) - FVector(0.f, 0.f, EntropiaParkour::HangDrop);
+		if (!LedgeContinuesAt(LedgeEdge) || FVector::Dist(Character->GetActorLocation(), HangSpot) > 50.f)
+		{
+			Cancel();
+			return;
+		}
 		UpdateHang(DeltaTime);
 		return;
 	}
@@ -477,9 +487,16 @@ void UEntropiaParkourComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 		return;
 	}
 
+	// Algo te movió de golpe (una prensa, una zona de caída): el salto se cancela donde quedaste.
+	if (FVector::Dist(Character->GetActorLocation(), LastPathPoint) > 30.f)
+	{
+		Cancel();
+		return;
+	}
 	Elapsed += DeltaTime;
 	const float Alpha = Duration > 0.f ? Elapsed / Duration : 1.f;
-	Character->SetActorLocation(EntropiaParkour::PathPoint(Current, PathStart, PathEdge, PathEnd, Alpha), false, nullptr, ETeleportType::TeleportPhysics);
+	LastPathPoint = EntropiaParkour::PathPoint(Current, PathStart, PathEdge, PathEnd, Alpha);
+	Character->SetActorLocation(LastPathPoint, false, nullptr, ETeleportType::TeleportPhysics);
 	if (Alpha >= 1.f)
 	{
 		Finish();

@@ -4,6 +4,7 @@
 #include "EntropiaAnimationSet.h"
 #include "EntropiaParkourComponent.h"
 #include "InverseStepComponent.h"
+#include "TakedownComponent.h"
 #include "TemporalArmedDummy.h"
 #include "TemporalFX.h"
 #include "TemporalMannequin.h"
@@ -52,8 +53,9 @@ ATemporalMannequin* UEntropiaGrabComponent::FindGrabbable() const
 	for (AActor* Actor : Subsystem->GetTimeTargets())
 	{
 		ATemporalMannequin* Mannequin = Cast<ATemporalMannequin>(Actor);
-		// De pie: ni tirado, ni con un golpe guardado, ni ya sometido (aturdido sí se puede).
-		const bool bStanding = Mannequin && !Mannequin->IsKnockedDown() && !Mannequin->HasPendingHit() && !Mannequin->IsSubdued();
+		// De pie: ni tirado, ni con un golpe guardado, ni ya sometido, ni desplomándose (aturdido sí se puede).
+		const bool bStanding = Mannequin && !Mannequin->IsKnockedDown() && !Mannequin->HasPendingHit() && !Mannequin->IsSubdued()
+			&& !Mannequin->IsCollapsing();
 		if (!Mannequin || !CanGrab(Character->GetActorLocation(), Character->GetActorForwardVector(), Mannequin->GetActorLocation(), bStanding, MaxDistance))
 		{
 			continue;
@@ -78,7 +80,9 @@ bool UEntropiaGrabComponent::TryGrab()
 	}
 	const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
 	const UEntropiaParkourComponent* Parkour = Character->FindComponentByClass<UEntropiaParkourComponent>();
-	if ((Inverse && Inverse->IsInverseActive()) || (Parkour && Parkour->IsBusy()) || !Character->GetCharacterMovement()->IsMovingOnGround())
+	const UTakedownComponent* Takedown = Character->FindComponentByClass<UTakedownComponent>();
+	if ((Inverse && Inverse->IsInverseActive()) || (Parkour && Parkour->IsBusy()) || (Takedown && Takedown->IsBusy())
+		|| !Character->GetCharacterMovement()->IsMovingOnGround())
 	{
 		return false;
 	}
@@ -92,11 +96,13 @@ bool UEntropiaGrabComponent::TryGrab()
 	// Llave: le tomas el brazo; si tiene pistola, se la quitas. Queda de espaldas a ti, sometido.
 	const FVector Direction = (Best->GetActorLocation() - Character->GetActorLocation()).GetSafeNormal2D();
 	Character->SetActorRotation(FRotator(0.f, Direction.Rotation().Yaw, 0.f));
+	float PoseDelay = 0.f;
 	if (ATemporalArmedDummy* Armed = Cast<ATemporalArmedDummy>(Best); Armed && Armed->IsArmed())
 	{
-		Armed->Disarm(Direction);
+		// Primero se ve cómo le quitas la pistola; después queda en la llave.
+		PoseDelay = FMath::Min(Armed->Disarm(Direction), 0.6f);
 	}
-	Best->SetSubdued(true);
+	Best->SetSubdued(true, PoseDelay);
 	Held = Best;
 	HoldTimer = HoldSeconds;
 	Character->GetCharacterMovement()->StopMovementImmediately();

@@ -2,6 +2,7 @@
 
 #include "TemporalArmedDummy.h"
 #include "EntropiaAnimationSet.h"
+#include "TemporalDilation.h"
 #include "TemporalFX.h"
 #include "TemporalProjectile.h"
 
@@ -155,26 +156,41 @@ void ATemporalArmedDummy::FireAtPlayer()
 		Bullet->Launch(Muzzle, (Target - Muzzle).GetSafeNormal(), this);
 		TemporalFX::Burst(this, Muzzle, FLinearColor(1.f, 0.55f, 0.1f), 0.3f);
 		++TotalShots;
+		if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+		{
+			// El disparo reemplaza la pose de apuntar un momento; al terminar, el Tick la vuelve a poner.
+			const float FireSeconds = EntropiaAnim::Play(this, Set->DummyFire);
+			if (FireSeconds > 0.f)
+			{
+				FireAnimLeft = FireSeconds;
+				bAimPosePlaying = false;
+			}
+		}
 	}
 }
 
-void ATemporalArmedDummy::Disarm(const FVector& Direction)
+float ATemporalArmedDummy::Disarm(const FVector& Direction)
 {
 	if (!bArmed)
 	{
-		return;
+		return 0.f;
 	}
 	bArmed = false;
+	// La reacción reemplaza la pose de apuntar (ya no hay que quitarla después).
+	bAimPosePlaying = false;
+	FireAnimLeft = 0.f;
+	float ReactionSeconds = 0.f;
 	Gun->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 	Gun->SetCollisionProfileName(TEXT("PhysicsActor"));
 	Gun->SetSimulatePhysics(true);
 	Gun->AddImpulse((Direction + FVector(0.f, 0.f, 0.8f)) * 350.f, NAME_None, /*bVelChange=*/true);
 	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
 	{
-		EntropiaAnim::Play(this, Set->VictimDisarmed);
+		ReactionSeconds = EntropiaAnim::Play(this, Set->VictimDisarmed);
 	}
 	RestartRoutine();
 	SetActorLocation(CoverHome);
+	return ReactionSeconds;
 }
 
 void ATemporalArmedDummy::RestartRoutine()
@@ -189,6 +205,7 @@ void ATemporalArmedDummy::ReceiveHit(const FVector& Direction, bool bKnockdown)
 	// Un golpe le corta la rutina: vuelve a empezar cubierto.
 	RestartRoutine();
 	bAimPosePlaying = false;
+	FireAnimLeft = 0.f;
 }
 
 void ATemporalArmedDummy::ResetMannequin()
@@ -203,6 +220,7 @@ void ATemporalArmedDummy::ResetMannequin()
 	}
 	RestartRoutine();
 	bAimPosePlaying = false;
+	FireAnimLeft = 0.f;
 	SetActorLocation(CoverHome);
 	PlaceGun(false);
 }
@@ -212,18 +230,32 @@ void ATemporalArmedDummy::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
-	if (!bArmed || IsReacting())
+	// Congelado (Detener, burbuja, mundo detenido): nada cambia, ni su pose (aunque tenga un golpe guardado). No se asoma,
+	// no gira hacia ti y no dispara.
+	if (const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this); Dilation && Dilation->IsFrozen(this))
 	{
-		RestartRoutine();
-		if (bAimPosePlaying && Set)
+		return;
+	}
+	// Quita la pose de apuntar o de disparo solo si es la que tiene puesta: si una reacción (desarme, cuello roto, golpe)
+	// ya la reemplazó, no hay que cortarla.
+	auto StopOwnPose = [this, Set]()
+	{
+		if (Set && (EntropiaAnim::IsPlaying(this, Set->DummyAim) || EntropiaAnim::IsPlaying(this, Set->DummyFire)))
 		{
 			EntropiaAnim::Stop(this, 0.2f);
 		}
 		bAimPosePlaying = false;
+		FireAnimLeft = 0.f;
+	};
+	if (!bArmed || IsReacting())
+	{
+		RestartRoutine();
+		StopOwnPose();
 		return;
 	}
 
-	// DeltaTime ya trae su tiempo propio: congelado no se asoma ni dispara.
+	// DeltaTime ya trae su tiempo propio.
+	FireAnimLeft = FMath::Max(0.f, FireAnimLeft - DeltaTime);
 	const int32 Shots = Routine.Advance(DeltaTime);
 	const float Out = Routine.StepAlpha();
 	if (DeltaTime > 0.f)
@@ -239,16 +271,15 @@ void ATemporalArmedDummy::Tick(float DeltaTime)
 			const FVector ToPlayer = Player->GetActorLocation() - GetActorLocation();
 			SetActorRotation(FRotator(0.f, ToPlayer.Rotation().Yaw, 0.f));
 		}
-		if (!bAimPosePlaying && Set)
+		if (!bAimPosePlaying && FireAnimLeft <= 0.f && Set)
 		{
 			EntropiaAnim::Play(this, Set->DummyAim);
 			bAimPosePlaying = true;
 		}
 	}
-	else if (bAimPosePlaying && Set)
+	else if (bAimPosePlaying || FireAnimLeft > 0.f)
 	{
-		EntropiaAnim::Stop(this, 0.2f);
-		bAimPosePlaying = false;
+		StopOwnPose();
 	}
 	PlaceGun(bOut);
 

@@ -51,9 +51,13 @@ public:
 	/** Romperle el cuello: se desploma (animación de muerte y luego muñeco de trapo). Congelado, espera a que vuelva su tiempo. */
 	void ReceiveNeckBreak(const FVector& Direction);
 
-	/** Sometido (agarrado del brazo): no hace nada hasta que lo sueltan. */
+	/** Sometido (agarrado del brazo): no hace nada hasta que lo sueltan. PoseDelay: segundos (de su tiempo) antes de la pose
+	 *  de la llave, para que se vea la animación que ya está haciendo (el desarme). */
 	bool IsSubdued() const { return bSubdued; }
-	void SetSubdued(bool bInSubdued);
+	void SetSubdued(bool bInSubdued, float PoseDelay = 0.f);
+
+	/** Desplomándose con el cuello roto (o con el crujido guardado mientras está congelado). */
+	bool IsCollapsing() const { return NeckBreakTime > 0.f || bPendingNeckBreak; }
 
 	bool IsKnockedDown() const { return bKnockedDown; }
 	bool HasPendingHit() const { return bPendingHit; }
@@ -77,6 +81,7 @@ protected:
 	float NeckBreakTime = 0.f;
 	FVector NeckBreakDirection = FVector::ForwardVector;
 	bool bSubdued = false;
+	float SubduedPoseDelay = 0.f;
 	bool bPendingNeckBreak = false;
 
 private:

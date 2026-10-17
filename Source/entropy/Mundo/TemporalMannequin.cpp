@@ -108,9 +108,10 @@ void ATemporalMannequin::ReceiveHit(const FVector& Direction, bool bKnockdown)
 	TemporalFX::Burst(this, GetActorLocation() + FVector(0.f, 0.f, 50.f), FLinearColor(1.f, 0.75f, 0.5f), 0.3f);
 }
 
-void ATemporalMannequin::SetSubdued(bool bInSubdued)
+void ATemporalMannequin::SetSubdued(bool bInSubdued, float PoseDelay)
 {
 	bSubdued = bInSubdued;
+	SubduedPoseDelay = bInSubdued ? FMath::Max(PoseDelay, 0.f) : 0.f;
 	const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
 	if (!Set)
 	{
@@ -118,7 +119,10 @@ void ATemporalMannequin::SetSubdued(bool bInSubdued)
 	}
 	if (bSubdued)
 	{
-		EntropiaAnim::Play(this, Set->VictimSubdued);
+		if (SubduedPoseDelay <= 0.f)
+		{
+			EntropiaAnim::Play(this, Set->VictimSubdued);
+		}
 	}
 	else if (EntropiaAnim::IsPlaying(this, Set->VictimSubdued))
 	{
@@ -133,6 +137,7 @@ void ATemporalMannequin::ReceiveNeckBreak(const FVector& Direction)
 		return;
 	}
 	bSubdued = false;
+	SubduedPoseDelay = 0.f;
 	StaggerTime = 0.f;
 	NeckBreakDirection = Direction;
 	const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
@@ -157,6 +162,9 @@ void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
 {
 	bKnockedDown = true;
 	bPendingHit = false;
+	// Tirado ya no está en la llave (quien lo tenía agarrado lo suelta).
+	bSubdued = false;
+	SubduedPoseDelay = 0.f;
 	DownTime = 0.f;
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -243,6 +251,7 @@ void ATemporalMannequin::ResetMannequin()
 	StaggerTime = 0.f;
 	NeckBreakTime = 0.f;
 	bSubdued = false;
+	SubduedPoseDelay = 0.f;
 	if (bKnockedDown)
 	{
 		Recover(false);
@@ -257,6 +266,19 @@ void ATemporalMannequin::Tick(float DeltaTime)
 
 	// DeltaTime ya trae su tiempo propio: congelado vale 0 (no gira, no se levanta).
 	StaggerTime = FMath::Max(0.f, StaggerTime - DeltaTime);
+	if (bSubdued && SubduedPoseDelay > 0.f)
+	{
+		// Terminó de verse el desarme: queda en la llave.
+		SubduedPoseDelay -= DeltaTime;
+		if (SubduedPoseDelay <= 0.f)
+		{
+			SubduedPoseDelay = 0.f;
+			if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+			{
+				EntropiaAnim::Play(this, Set->VictimSubdued);
+			}
+		}
+	}
 	if (NeckBreakTime > 0.f)
 	{
 		// Se desploma: al terminar la animación de muerte, muñeco de trapo sin empujón.

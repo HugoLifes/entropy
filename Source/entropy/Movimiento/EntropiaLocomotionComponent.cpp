@@ -231,6 +231,18 @@ void UEntropiaLocomotionComponent::SetCrouched(bool bCrouch)
 	}
 }
 
+void UEntropiaLocomotionComponent::SetCrouchPoseOverride(const FEntropiaAnimSlot* Pose)
+{
+	if (Pose)
+	{
+		CrouchPoseOverride = *Pose;
+	}
+	else
+	{
+		CrouchPoseOverride.Reset();
+	}
+}
+
 void UEntropiaLocomotionComponent::ApplyCrouchPose()
 {
 	ACharacter* Character = GetCharacter();
@@ -240,20 +252,24 @@ void UEntropiaLocomotionComponent::ApplyCrouchPose()
 		return;
 	}
 	UAnimInstance* Anim = Character->GetMesh()->GetAnimInstance();
-	const bool bPosePlaying = EntropiaAnim::IsPlaying(Character, Set->CrouchPose);
+	const FEntropiaAnimSlot& Desired = CrouchPoseOverride.IsSet() ? CrouchPoseOverride.GetValue() : Set->CrouchPose;
 	if (IsCrouched())
 	{
-		// Agachado: la pose se pone si no hay otra animación encima (un golpe, un salto de parkour).
-		if (!bPosePlaying && Anim && !Anim->IsAnyMontagePlaying())
+		// Agachado: la pose se pone si no hay otra animación encima (un golpe, un salto de parkour); si lo que hay
+		// encima es la otra pose de agachado (la normal en vez de la de cobertura), se cambia directo.
+		const bool bDesiredPlaying = EntropiaAnim::IsPlaying(Character, Desired);
+		const bool bOtherPosePlaying = bCrouchPosePlaying && EntropiaAnim::IsPlaying(Character, PlayingCrouchPose);
+		if (!bDesiredPlaying && Anim && (!Anim->IsAnyMontagePlaying() || bOtherPosePlaying))
 		{
-			EntropiaAnim::Play(Character, Set->CrouchPose);
+			EntropiaAnim::Play(Character, Desired);
+			PlayingCrouchPose = Desired;
 		}
 		bCrouchPosePlaying = true;
 	}
 	else if (bCrouchPosePlaying)
 	{
 		bCrouchPosePlaying = false;
-		if (bPosePlaying)
+		if (EntropiaAnim::IsPlaying(Character, PlayingCrouchPose))
 		{
 			EntropiaAnim::Stop(Character, 0.2f);
 		}

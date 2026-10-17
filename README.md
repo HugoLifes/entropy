@@ -12,7 +12,7 @@ Hecho en **Unreal Engine 5.8 con C++**. Prototipo en cuartos grises (sin arte fi
 |---|---|
 | ![Sobremarcha](docs/capturas/sobremarcha.jpg) **Sobremarcha (V):** el mundo va lento y tú normal. | ![Burbuja](docs/capturas/burbuja.jpg) **Burbuja (Q):** dentro, el tiempo se detiene (balas, cajas, ecos). |
 | ![Dash](docs/capturas/dash.jpg) **Dash (Shift)** con estela, también en el aire. | ![Tiempo de reflejo](docs/capturas/tiempo-de-reflejo.jpg) **Esquiva perfecta:** dash justo antes de que te pegue una bala → *tiempo de reflejo*. |
-| ![Remate](docs/capturas/remate.jpg) **Remate** por la espalda (cámara lenta y muñeco de trapo). | ![Remate congelado](docs/capturas/remate-congelado.jpg) **Detener + remate:** congelas al maniquí y el golpe se guarda hasta que su tiempo vuelve. |
+| ![Remate](docs/capturas/remate.jpg) **Remate** por la espalda: desde la fase 3b le **rompes el cuello** y cae como muñeco de trapo. | ![Remate congelado](docs/capturas/remate-congelado.jpg) **Detener + remate:** congelas al maniquí y el golpe se guarda hasta que su tiempo vuelve. |
 | ![Paso Inverso](docs/capturas/paso-inverso.jpg) **Paso Inverso (F):** regresas por donde viniste, con tu pose al revés. | Y además: **Eco** (un fantasma repite tus últimos segundos), **Invertir objeto** (R), **destrucción** que se rebobina pieza por pieza, **Ojo lento**. |
 | ![Mundo detenido](docs/capturas/mundo-detenido.jpg) **Detener el mundo (N y luego Q):** todo se para menos tú; el mundo queda gris e índigo y tú a color. | ![Impacto](docs/capturas/mundo-impacto.jpg) **El impacto:** al empezar, un destello en negativo (cielo naranja) y una onda que sale de ti. |
 
@@ -24,7 +24,7 @@ Hecho en **Unreal Engine 5.8 con C++**. Prototipo en cuartos grises (sin arte fi
 | ![Cobertura](docs/capturas/cobertura.jpg) **Cobertura (C junto a una pared):** baja o alta; al apuntar te asomas por arriba o por la esquina. | ![Golpes](docs/capturas/golpes.jpg) **Combo de 3 golpes (clic sin apuntar):** el tercero tumba. |
 | ![Golpe con enfoque](docs/capturas/golpe-enfoque.jpg) **Golpe con enfoque** de frente (cámara lenta y cámara cerca) · **romper el cuello** por la espalda. | ![Agarrar](docs/capturas/agarrar.jpg) **Agarrar (E):** desarmas al dummy y lo sometes; clic = romper el cuello, E = soltar con empujón. |
 
-También: **correr** (mantener Shift), **agacharse** (C), **caídas** (rodar si caes moviéndote, aterrizaje duro, daño si caes de muy alto) y **dummies armados** que se cubren, se asoman y te disparan (sala 7).
+También: **correr** (mantener Shift), **agacharse** (C), **caídas** (rodar si caes moviéndote, aterrizaje duro, daño si caes de muy alto; en la sala 6 hay una escalera hasta un balcón de 10 m para practicarlas) y **dummies armados** que se cubren, se asoman y te disparan (sala 7).
 
 ## Controles
 

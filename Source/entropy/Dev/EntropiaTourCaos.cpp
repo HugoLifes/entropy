@@ -1,6 +1,8 @@
 // ENTROPÍA · Tour "caos": hacer cosas raras a propósito para buscar errores, fugas y estados rotos.
 
 #include "EntropiaTourComponent.h"
+#include "EntropiaAnimationSet.h"
+#include "EntropiaRoomBuilder.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
 #include "EntropiaGrabComponent.h"
@@ -487,6 +489,65 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tras_morir_colgado ocupado=%d modo=%d vida=%.0f"),
 			Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0, Movement(), Powers->Health ? Powers->Health->Health : -1.f);
 	});
+	// Fase 3b · Teletransporte "de fuera" (como la prensa de la sala 3 o la zona de caída) colgado, a medio salto y cubierto;
+	// y una orilla que desaparece mientras cuelgas. Nunca te regresa al lugar de antes ni te deja flotando.
+	auto OutsideTeleport = [this]()
+	{
+		ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		if (Character && Rooms->ParkourRoom)
+		{
+			if (Powers->Locomotion) { Powers->Locomotion->SetTourInput(FVector::ZeroVector); }
+			Character->SetActorLocation(Rooms->ParkourRoom->GetActorTransform().TransformPosition(FVector(150.f, 0.f, 98.f)), false, nullptr, ETeleportType::TeleportPhysics);
+			Character->GetCharacterMovement()->StopMovementImmediately();
+		}
+	};
+	auto LogRelocated = [this, Movement](const TCHAR* Name)
+	{
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		const FVector Local = Pawn && Rooms->ParkourRoom ? Rooms->ParkourRoom->GetActorTransform().InverseTransformPosition(Pawn->GetActorLocation()) : FVector::ZeroVector;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s colgado=%d ocupado=%d cubierto=%d x=%.0f y=%.0f modo=%d"), Name,
+			Powers->Parkour && Powers->Parkour->IsHanging() ? 1 : 0, Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0,
+			Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0, Local.X, Local.Y, Movement());
+	};
+	Add(TEXT("prensa_salto"), 0.15f, [this]
+	{
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
+		if (ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0))) { Character->Jump(); }
+	});
+	Add(TEXT("prensa_salto_tp"), 0.7f, [LogRelocated, OutsideTeleport] { LogRelocated(TEXT("prensa_antes_salto")); OutsideTeleport(); });
+	Add(TEXT("prensa_salto_revisa"), 0.1f, [LogRelocated] { LogRelocated(TEXT("prensa_salto")); });
+	Add(TEXT("prensa_colgado"), 1.f, [this, HangAgain] { Rooms->GoToRoom(6); HangAgain(); });
+	Add(TEXT("prensa_colgado_tp"), 0.5f, [LogRelocated, OutsideTeleport] { LogRelocated(TEXT("prensa_antes_colgado")); OutsideTeleport(); });
+	Add(TEXT("prensa_colgado_revisa"), 0.1f, [LogRelocated] { LogRelocated(TEXT("prensa_colgado")); });
+	Add(TEXT("prensa_cubierto"), 0.4f, [this]
+	{
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
+		if (Powers->Cover) { Powers->Cover->TryEnter(); }
+	});
+	Add(TEXT("prensa_cubierto_tp"), 0.4f, [LogRelocated, OutsideTeleport] { LogRelocated(TEXT("prensa_antes_cubierto")); OutsideTeleport(); });
+	Add(TEXT("prensa_cubierto_revisa"), 0.1f, [this, LogRelocated]
+	{
+		LogRelocated(TEXT("prensa_cubierto"));
+		if (Powers->Cover) { Powers->Cover->Exit(); }
+	});
+	TSharedRef<TWeakObjectPtr<UStaticMeshComponent>> TempLedge = MakeShared<TWeakObjectPtr<UStaticMeshComponent>>();
+	Add(TEXT("orilla_temporal"), 1.2f, [this, TempLedge]
+	{
+		if (Rooms->ParkourRoom)
+		{
+			*TempLedge = EntropiaRooms::AddBlock(Rooms->ParkourRoom, FVector(550.f, 0.f, 170.f), FVector(100.f, 300.f, 340.f), FLinearColor(0.8f, 0.3f, 0.3f));
+			Rooms->ParkourRoom->PlacePlayer(FVector(400.f, 0.f, 98.f));
+			if (Powers->Locomotion) { Powers->Locomotion->SetTourInput(Rooms->ParkourRoom->GetActorForwardVector()); }
+		}
+		if (ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0))) { Character->Jump(); }
+	});
+	Add(TEXT("orilla_desaparece"), 0.6f, [this, TempLedge, LogRelocated]
+	{
+		LogRelocated(TEXT("orilla_temporal"));
+		if (Powers->Locomotion) { Powers->Locomotion->SetTourInput(FVector::ZeroVector); }
+		if (UStaticMeshComponent* Block = TempLedge->Get()) { Block->DestroyComponent(); }
+	});
+	Add(TEXT("orilla_desaparece_revisa"), 0.1f, [LogRelocated] { LogRelocated(TEXT("orilla_desaparece")); });
 	// Fase 3b · Cobertura que se rompe: cubierto detrás de la caja rompible de la sala 4, se rompe y sales sin quedar pegado.
 	Add(TEXT("cobertura_rompible"), 0.6f, [this]
 	{
@@ -514,6 +575,133 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_rota cubierto=%d plano=%d"), Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0,
 			Character && Character->GetCharacterMovement()->bConstrainToPlane ? 1 : 0);
+	});
+	// Fase 3b · Dummy asomado durante el mundo detenido (no gira ni dispara); agarrarlo asomado (se ve el desarme y luego
+	// la llave); agarrar durante un remate o durante el desplome (no se puede).
+	auto CombatDummy = [this](int32 Index) -> ATemporalArmedDummy*
+	{
+		return Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().IsValidIndex(Index) ? Rooms->CombatRoom->GetDummies()[Index].Get() : nullptr;
+	};
+	TSharedRef<float> YawBefore = MakeShared<float>(0.f);
+	TSharedRef<int32> ShotsBefore = MakeShared<int32>(0);
+	Add(TEXT("asomado_prepara"), 2.9f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->PlacePlayer(FVector(900.f, 0.f, 98.f)); }
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("asomado_mundo"), 1.f, [this, CombatDummy, YawBefore, ShotsBefore]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		*YawBefore = Target ? Target->GetActorRotation().Yaw : 0.f;
+		*ShotsBefore = Target ? Target->GetTotalShots() : 0;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR asomado_antes apunta=%d"), Target && Set && (EntropiaAnim::IsPlaying(Target, Set->DummyAim) || EntropiaAnim::IsPlaying(Target, Set->DummyFire)) ? 1 : 0);
+		if (Powers->WorldStop) { Powers->WorldStop->Start(); }
+		// Te mueves de lado: un dummy que siguiera con su tiempo giraría hacia ti.
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->PlacePlayer(FVector(900.f, 500.f, 98.f)); }
+	});
+	Add(TEXT("asomado_mundo_revisa"), 0.1f, [this, CombatDummy, YawBefore, ShotsBefore]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const float Turned = Target ? FMath::Abs(FMath::FindDeltaAngleDegrees(*YawBefore, Target->GetActorRotation().Yaw)) : -1.f;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR asomado_mundo giro=%.0f disparos=%d"), Turned, Target ? Target->GetTotalShots() - *ShotsBefore : -1);
+		if (Powers->WorldStop) { Powers->WorldStop->Stop(); }
+	});
+	Add(TEXT("asomado_agarrar"), 0.15f, [this, CombatDummy]
+	{
+		ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			const FVector Front = Target->GetActorForwardVector();
+			Pawn->SetActorLocationAndRotation(Target->GetActorLocation() + Front * 110.f, FRotator(0.f, (-Front).Rotation().Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		const bool bPeeking = Target && Set && (EntropiaAnim::IsPlaying(Target, Set->DummyAim) || EntropiaAnim::IsPlaying(Target, Set->DummyFire));
+		const bool bOk = Powers->Grab && Powers->Grab->TryGrab();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR asomado_agarrar asomado=%d ok=%d"), bPeeking ? 1 : 0, bOk ? 1 : 0);
+	});
+	Add(TEXT("asomado_desarme"), 0.7f, [this, CombatDummy]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR asomado_desarme pose=%d"), Target && Set && EntropiaAnim::IsPlaying(Target, Set->VictimDisarmed) ? 1 : 0);
+	});
+	Add(TEXT("asomado_sometido"), 0.2f, [this, CombatDummy]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR asomado_sometido pose=%d sometido=%d"), Target && Set && EntropiaAnim::IsPlaying(Target, Set->VictimSubdued) ? 1 : 0,
+			Target && Target->IsSubdued() ? 1 : 0);
+		if (Powers->Grab && Powers->Grab->IsHolding()) { Powers->Grab->Release(false); }
+	});
+	Add(TEXT("cuello_asomado_prepara"), 2.9f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->PlacePlayer(FVector(900.f, 0.f, 98.f)); }
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("cuello_asomado"), 0.4f, [this, CombatDummy]
+	{
+		ATemporalArmedDummy* Target = CombatDummy(0);
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+			Pawn->SetActorLocationAndRotation(Target->GetActorLocation() - Target->GetActorForwardVector() * 110.f, FRotator(0.f, Target->GetActorRotation().Yaw, 0.f),
+				false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		Powers->PrimaryAction();
+	});
+	Add(TEXT("cuello_asomado_congelado"), 0.1f, [this, CombatDummy]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cuello_asomado_congelado guardado=%d sigue_asomado=%d"), Target && Target->HasPendingHit() ? 1 : 0,
+			Target && Set && (EntropiaAnim::IsPlaying(Target, Set->DummyAim) || EntropiaAnim::IsPlaying(Target, Set->DummyFire)) ? 1 : 0);
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	Add(TEXT("cuello_asomado_suelta"), 0.3f, [this, CombatDummy]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(0);
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cuello_asomado_cae desploma=%d"), Target && Set && EntropiaAnim::IsPlaying(Target, Set->VictimNeckBreak) ? 1 : 0);
+	});
+	Add(TEXT("agarre_remate_prepara"), 0.4f, [this, CombatDummy]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		const ATemporalArmedDummy* Target = CombatDummy(2);
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			Pawn->SetActorLocationAndRotation(Target->GetActorLocation() - Target->GetActorForwardVector() * 110.f, FRotator(0.f, Target->GetActorRotation().Yaw, 0.f),
+				false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	});
+	Add(TEXT("agarre_remate"), 0.65f, [this]
+	{
+		Powers->PrimaryAction();
+		const bool bBusy = Powers->Takedown && Powers->Takedown->IsBusy();
+		const bool bOk = Powers->Grab && Powers->Grab->TryGrab();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_durante_remate remate=%d ok=%d"), bBusy ? 1 : 0, bOk ? 1 : 0);
+	});
+	Add(TEXT("agarre_desplome"), 1.1f, [this, CombatDummy]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(2);
+		const bool bCollapsing = Target && Target->IsReacting() && !Target->IsKnockedDown();
+		const bool bOk = Powers->Grab && Powers->Grab->TryGrab();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_durante_desplome cayendo=%d ok=%d"), bCollapsing ? 1 : 0, bOk ? 1 : 0);
+	});
+	Add(TEXT("agarre_desplome_revisa"), 0.3f, [this, CombatDummy, Movement]
+	{
+		const ATemporalArmedDummy* Target = CombatDummy(2);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_desplome_fin agarrando=%d modo=%d tirado=%d"), Powers->Grab && Powers->Grab->IsHolding() ? 1 : 0,
+			Movement(), Target && Target->IsKnockedDown() ? 1 : 0);
+		if (Powers->Grab && Powers->Grab->IsHolding()) { Powers->Grab->Release(false); }
 	});
 	// Fase 3b · Agarre raro: agarrar a un congelado, detenerlo en la mano, morir agarrando y teletransportarse agarrando.
 	auto GrabDummy = [this](int32 Index)

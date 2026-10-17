@@ -1,6 +1,7 @@
 // ENTROPÍA · Cobertura
 
 #include "EntropiaCoverComponent.h"
+#include "EntropiaAnimationSet.h"
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "InverseStepComponent.h"
@@ -133,10 +134,17 @@ bool UEntropiaCoverComponent::TryEnter()
 	Move->SetPlaneConstraintEnabled(true);
 	Move->SetPlaneConstraintNormal(CoverNormal);
 	Move->SetPlaneConstraintOrigin(LastValidLocation);
+	const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
 	if (UEntropiaLocomotionComponent* Locomotion = Character->FindComponentByClass<UEntropiaLocomotionComponent>())
 	{
 		Locomotion->SetSprint(false);
+		// Baja: agachado con la pose de cobertura (hueco CoverLow de DA_Animaciones).
+		Locomotion->SetCrouchPoseOverride(Kind == EEntropiaCover::Low && Set ? &Set->CoverLow : nullptr);
 		Locomotion->SetCrouched(Kind == EEntropiaCover::Low);
+	}
+	if (Kind == EEntropiaCover::High && Set && !Set->CoverHigh.Anim.IsNull())
+	{
+		EntropiaAnim::Play(Character, Set->CoverHigh);
 	}
 	CornerSide = 0;
 	bPeeking = false;
@@ -163,9 +171,17 @@ void UEntropiaCoverComponent::Exit()
 		{
 			Aim->SetShoulderSide(1.f);
 		}
-		if (UEntropiaLocomotionComponent* Locomotion = Character->FindComponentByClass<UEntropiaLocomotionComponent>(); Locomotion && Kind == EEntropiaCover::Low)
+		if (UEntropiaLocomotionComponent* Locomotion = Character->FindComponentByClass<UEntropiaLocomotionComponent>())
 		{
-			Locomotion->SetCrouched(false);
+			Locomotion->SetCrouchPoseOverride(nullptr);
+			if (Kind == EEntropiaCover::Low)
+			{
+				Locomotion->SetCrouched(false);
+			}
+		}
+		if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get(); Set && EntropiaAnim::IsPlaying(Character, Set->CoverHigh))
+		{
+			EntropiaAnim::Stop(Character, 0.2f);
 		}
 	}
 	Kind = EEntropiaCover::None;
@@ -202,6 +218,10 @@ void UEntropiaCoverComponent::UpdatePeek(bool bAiming)
 			Aim->SetShoulderSide(static_cast<float>(CornerSide));
 		}
 		PeekBase = Character->GetActorLocation();
+		if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get(); Set && EntropiaAnim::IsPlaying(Character, Set->CoverHigh))
+		{
+			EntropiaAnim::Stop(Character, 0.15f);
+		}
 		Character->GetCharacterMovement()->SetPlaneConstraintEnabled(false);
 		Character->SetActorLocation(PeekBase + Right * CornerSide * PeekOut, true);
 		bPeeking = true;
@@ -211,6 +231,10 @@ void UEntropiaCoverComponent::UpdatePeek(bool bAiming)
 		Character->SetActorLocation(PeekBase, true);
 		Character->GetCharacterMovement()->SetPlaneConstraintEnabled(true);
 		bPeeking = false;
+		if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get(); Set && !Set->CoverHigh.Anim.IsNull())
+		{
+			EntropiaAnim::Play(Character, Set->CoverHigh);
+		}
 		if (Aim)
 		{
 			Aim->SetShoulderSide(1.f);
@@ -239,6 +263,15 @@ void UEntropiaCoverComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	const UCharacterMovementComponent* Move = Character->GetCharacterMovement();
 	if ((Inverse && Inverse->IsInverseActive()) || (Parkour && Parkour->IsBusy()) || (Dash && Dash->IsDashing()) || !Move->IsMovingOnGround())
 	{
+		Exit();
+		return;
+	}
+
+	// Algo te movió de golpe (una prensa, una zona de caída): sales de la cobertura sin regresarte a la pared.
+	const FVector Anchor = (bPeeking && Kind == EEntropiaCover::High) ? PeekBase : LastValidLocation;
+	if (FVector::Dist2D(Character->GetActorLocation(), Anchor) > 200.f)
+	{
+		bPeeking = false;
 		Exit();
 		return;
 	}

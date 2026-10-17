@@ -66,8 +66,11 @@ public:
 	bool IsArmed() const { return bArmed; }
 	int32 GetTotalShots() const { return TotalShots; }
 
-	/** Le quitas la pistola (cae al piso con física). */
-	void Disarm(const FVector& Direction);
+	/** Le quitas la pistola (cae al piso con física). Devuelve cuánto dura su reacción (segundos). */
+	float Disarm(const FVector& Direction);
+
+	/** Dispara una bala hacia el jugador si lo ve. */
+	void FireAtPlayer();
 
 	virtual void ReceiveHit(const FVector& Direction, bool bKnockdown) override;
 	virtual void ResetMannequin() override;
@@ -77,7 +80,6 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
-	void FireAtPlayer();
 	void RestartRoutine();
 	void PlaceGun(bool bAiming);
 
@@ -85,5 +87,7 @@ private:
 	FVector CoverHome = FVector::ZeroVector;
 	bool bArmed = true;
 	bool bAimPosePlaying = false;
+	/** Segundos (de su tiempo) que le quedan a la animación de disparo; luego vuelve la pose de apuntar. */
+	float FireAnimLeft = 0.f;
 	int32 TotalShots = 0;
 };

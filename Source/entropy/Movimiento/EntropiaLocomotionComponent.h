@@ -7,6 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "EntropiaAnimationSet.h"
 #include "EntropiaFalls.h"
 #include "EntropiaLocomotionComponent.generated.h"
 
@@ -65,6 +66,9 @@ public:
 	void SetCrouched(bool bCrouch);
 	bool IsCrouched() const;
 
+	/** Otra pose para cuando estás agachado (la de cobertura baja). Nulo = la normal (CrouchPose). */
+	void SetCrouchPoseOverride(const FEntropiaAnimSlot* Pose);
+
 	bool IsRolling() const { return RollTimer > 0.f; }
 	bool IsHardLanding() const { return HardTimer > 0.f; }
 	const FEntropiaLandingInfo& GetLastLanding() const { return LastLanding; }
@@ -110,5 +114,8 @@ private:
 
 	bool bWantsSprint = false;
 	bool bCrouchPosePlaying = false;
+	/** La pose de agachado que se puso la última vez (para quitarla o cambiarla por otra). */
+	FEntropiaAnimSlot PlayingCrouchPose;
+	TOptional<FEntropiaAnimSlot> CrouchPoseOverride;
 	FVector TourInput = FVector::ZeroVector;
 };

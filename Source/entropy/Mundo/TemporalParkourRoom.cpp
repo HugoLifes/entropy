@@ -16,11 +16,13 @@ namespace EntropiaParkourRoom
 {
 	constexpr float RoomLength = 3000.f;
 	constexpr float RoomHalfWidth = 800.f;
-	constexpr float RoomWallHeight = 450.f;
+	// Altas para que nadie salga por encima (la escalera llega a 10 m).
+	constexpr float RoomWallHeight = 1250.f;
 	const FLinearColor FloorColor(0.17f, 0.19f, 0.18f);
 	const FLinearColor WallColor(0.26f, 0.28f, 0.27f);
 	const FLinearColor ObstacleColor(0.75f, 0.6f, 0.3f);
 	const FLinearColor HighColor(0.4f, 0.55f, 0.75f);
+	const FLinearColor StairColor(0.5f, 0.62f, 0.45f);
 	const FVector StartLocal(150.f, 0.f, 120.f);
 }
 
@@ -52,6 +54,14 @@ void ATemporalParkourRoom::Build()
 
 	// Carril derecho (Y = 600): muro de 3.4 m con su borde arriba (cornisa) para colgarse y moverse de lado.
 	EntropiaRooms::AddBlock(this, FVector(1000.f, 600.f, 170.f), FVector(600.f, 300.f, 340.f), FLinearColor(0.55f, 0.4f, 0.65f));
+
+	// Carril derecho, al fondo: escalera de bloques de 2 m (Espacio = trepar) hasta un balcón de 10 m para practicar caídas.
+	// Desde el de 6 m, bajarse corriendo = rodar; desde arriba = aterrizaje duro con daño.
+	for (int32 Step = 1; Step <= 5; ++Step)
+	{
+		const float Height = 200.f * Step;
+		EntropiaRooms::AddBlock(this, FVector(1600.f + 200.f * Step, 600.f, Height * 0.5f), FVector(200.f, 300.f, Height), EntropiaParkourRoom::StairColor);
+	}
 }
 
 void ATemporalParkourRoom::PlacePlayer(const FVector& Local) const
@@ -96,7 +106,7 @@ void ATemporalParkourRoom::ShowHint() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1006, 30.f, FColor(240, 190, 90),
-			TEXT("SALA 6 · PARKOUR: ESPACIO frente a algo = saltarlo, subir o trepar · corriendo (Shift) sobre la mesa = el gato · corriendo hacia el muro alto = correr por la pared · C = agacharse"));
+			TEXT("SALA 6 · PARKOUR: ESPACIO frente a algo = saltarlo, subir o trepar · corriendo (Shift) sobre la mesa = el gato · corriendo hacia el muro alto = correr por la pared · C = agacharse · escalera verde al fondo = caídas (bájate corriendo para rodar)"));
 	}
 }
 

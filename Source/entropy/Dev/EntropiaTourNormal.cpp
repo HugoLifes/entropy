@@ -1,6 +1,7 @@
 // ENTROPÍA · Modo tour normal: recorre las salas y prueba cada poder (capturas + FPS por paso).
 
 #include "EntropiaTourComponent.h"
+#include "EntropiaAnimationSet.h"
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
@@ -628,6 +629,38 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		}
 	});
 	Add(TEXT("orilla_suelto"), 0.3f, [LogHang] { LogHang(TEXT("suelto")); });
+	// Fase 3b · Escalera de bloques de 2 m (trepar 5 veces) hasta un balcón de 10 m; bajarse por el frente = caída alta.
+	Add(TEXT("escalera"), 1.1f, [this, Player, Hold]
+	{
+		if (Rooms->ParkourRoom)
+		{
+			Rooms->ParkourRoom->PlacePlayer(FVector(1610.f, 600.f, 98.f));
+			Hold(Rooms->ParkourRoom->GetActorForwardVector());
+		}
+		if (Player()) { Player()->Jump(); }
+	});
+	Add(TEXT("escalera_2"), 1.1f, [Player] { if (Player()) { Player()->Jump(); } });
+	Add(TEXT("escalera_3"), 1.1f, [Player] { if (Player()) { Player()->Jump(); } });
+	Add(TEXT("escalera_4"), 1.1f, [Player] { if (Player()) { Player()->Jump(); } });
+	Add(TEXT("escalera_5"), 0.95f, [Player] { if (Player()) { Player()->Jump(); } });
+	Add(TEXT("balcon"), 0.4f, [Hold, LogWhere]
+	{
+		Hold(FVector::ZeroVector);
+		LogWhere(TEXT("balcon"));
+	});
+	Add(TEXT("balcon_bajarse"), 2.2f, [this, Hold]
+	{
+		if (Powers->Locomotion) { Powers->Locomotion->ResetFall(); }
+		if (Rooms->ParkourRoom) { Hold(Rooms->ParkourRoom->GetActorForwardVector()); }
+	});
+	Add(TEXT("balcon_revisa"), 0.3f, [this, Hold, LogWhere]
+	{
+		const FEntropiaLandingInfo Info = Powers->Locomotion ? Powers->Locomotion->GetLastLanding() : FEntropiaLandingInfo();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR balcon_caida tipo=%d altura=%.0f dano=%.0f"), static_cast<int32>(Info.Kind), Info.Height, Info.Damage);
+		Hold(FVector::ZeroVector);
+		LogWhere(TEXT("balcon_abajo"));
+		if (Powers->Health) { Powers->Health->ResetHealth(); }
+	});
 	// Fase 3b · Cobertura: barda baja (agachado, asomarse levantándose) y muro alto (esquina, asomarse de lado).
 	auto LogCover = [this, Player](const TCHAR* Name)
 	{
@@ -637,6 +670,27 @@ void UEntropiaTourComponent::BuildNormalSteps()
 			Powers->Cover ? Powers->Cover->GetCornerSide() : 0, Powers->Locomotion && Powers->Locomotion->IsCrouched() ? 1 : 0,
 			Powers->Cover && Powers->Cover->IsPeeking() ? 1 : 0, Local.X, Local.Y);
 	};
+	// Fase 3b · La pose de cobertura baja sale de su hueco en DA_Animaciones (se cambia por otra un momento y se regresa).
+	TSharedRef<FEntropiaAnimSlot> SavedCoverLow = MakeShared<FEntropiaAnimSlot>();
+	Add(TEXT("cobertura_pose"), 0.5f, [this, SavedCoverLow]
+	{
+		if (UEntropiaAnimationSet* Set = const_cast<UEntropiaAnimationSet*>(UEntropiaAnimationSet::Get()))
+		{
+			*SavedCoverLow = Set->CoverLow;
+			Set->CoverLow.Anim = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump.MM_Jump")));
+		}
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
+		if (Powers->Cover) { Powers->Cover->TryEnter(); }
+	});
+	Add(TEXT("cobertura_pose_revisa"), 0.3f, [this, Player, SavedCoverLow]
+	{
+		if (UEntropiaAnimationSet* Set = const_cast<UEntropiaAnimationSet*>(UEntropiaAnimationSet::Get()))
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_pose propia=%d"), Player() && EntropiaAnim::IsPlaying(Player(), Set->CoverLow) ? 1 : 0);
+			Set->CoverLow = *SavedCoverLow;
+		}
+		if (Powers->Cover) { Powers->Cover->Exit(); }
+	});
 	Add(TEXT("cubrirse_bajo"), 0.8f, [this, LogCover]
 	{
 		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
@@ -695,6 +749,21 @@ void UEntropiaTourComponent::BuildNormalSteps()
 	Add(TEXT("dummy_dispara_revisa"), 0.3f, [this, DummyShots]
 	{
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dummies_dispararon=%d"), DummyShots() > 0 ? 1 : 0);
+	});
+	// Fase 3b · Al disparar, el dummy usa su hueco DummyFire de DA_Animaciones.
+	Add(TEXT("dummy_dispara_pose"), 0.3f, [this, Player]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().IsValidIndex(0) ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+		if (Target && Player())
+		{
+			// Hacia el centro de la sala (lado libre, sin la pared del dummy en medio).
+			Player()->SetActorLocation(Target->GetActorLocation() + Rooms->CombatRoom->GetActorRightVector() * 250.f, false, nullptr, ETeleportType::TeleportPhysics);
+			const int32 Before = Target->GetTotalShots();
+			Target->FireAtPlayer();
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dummy_dispara_pose disparo=%d pose=%d"), Target->GetTotalShots() - Before,
+				Set && EntropiaAnim::IsPlaying(Target, Set->DummyFire) ? 1 : 0);
+		}
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	// Fase 3b · Golpes: combo de 3 al maniquí 0 de la sala 5 (el tercero lo tumba); romper el cuello por la espalda;

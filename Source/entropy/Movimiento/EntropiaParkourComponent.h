@@ -73,6 +73,8 @@ private:
 	float Elapsed = 0.f;
 	float Duration = 0.f;
 	FVector PathStart = FVector::ZeroVector;
+	/** Dónde te dejó el último paso de la curva (si estás lejos de ahí, algo te movió). */
+	FVector LastPathPoint = FVector::ZeroVector;
 	FVector PathEdge = FVector::ZeroVector;
 	FVector PathEnd = FVector::ZeroVector;
 	FVector ExitDirection = FVector::ForwardVector;
