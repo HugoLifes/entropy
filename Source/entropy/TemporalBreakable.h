@@ -11,8 +11,16 @@
 
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
-class AStaticMeshActor;
+class UPrimitiveComponent;
 class UTemporalRecorderComponent;
+
+/** Cómo se parte: en pedazos irregulares (Voronoi, como cristal) o en cubos iguales (el modo viejo). */
+UENUM(BlueprintType)
+enum class ETemporalFractureMode : uint8
+{
+	Irregular,
+	Cubes
+};
 
 UCLASS()
 class ENTROPY_API ATemporalBreakable : public AActor
@@ -29,7 +37,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	FVector Size = FVector(100.f, 100.f, 100.f);
 
-	/** En cuántos pedazos se parte por eje. Ojo con el rendimiento: 2x2x2 = 8 pedazos. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
+	ETemporalFractureMode FractureMode = ETemporalFractureMode::Irregular;
+
+	/** Pedazos en el modo Irregular. Más pedazos = más bonito pero más física (GTX 1650: ~10). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "2", ClampMax = "24"))
+	int32 NumShards = 10;
+
+	/** En cuántos pedazos se parte por eje en el modo Cubes. Ojo con el rendimiento: 2x2x2 = 8 pedazos. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia")
 	FIntVector Pieces = FIntVector(2, 2, 2);
 
@@ -85,14 +100,27 @@ private:
 
 	void Reassemble();
 	void DestroyShards();
+	void SpawnCubeShards();
+	void SpawnIrregularShards(const FVector& ImpactPoint);
+	/** Pedazo nuevo: lo anota, lo engancha al rearmado y lo lanza desde el impacto. */
+	void AddShard(AActor* Shard, UPrimitiveComponent* Body, UTemporalRecorderComponent* Recorder, const FVector& Home,
+		const FVector& ImpactPoint, const FVector& Direction);
 
 	UPROPERTY()
-	TArray<TObjectPtr<AStaticMeshActor>> Shards;
+	TArray<TObjectPtr<AActor>> Shards;
 
 	TArray<FVector> ShardHomes;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> Material;
+
+	/** Color de las caras del corte (el interior del objeto). */
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> InteriorMaterial;
+
+	/** Dónde y hacia dónde fue el golpe que lo rompió (lo usan los pedazos y los escombros). */
+	FVector PendingImpact = FVector::ZeroVector;
+	FVector PendingDirection = FVector::ForwardVector;
 
 	bool bBroken = false;
 	/** Tras rearmarse, unos instantes en los que no se puede volver a romper (el golpe que lo rompió sigue ahí). */

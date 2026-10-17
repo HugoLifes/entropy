@@ -20,7 +20,8 @@ public class entropy : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
-			"Niagara"
+			"Niagara",
+			"ProceduralMeshComponent"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

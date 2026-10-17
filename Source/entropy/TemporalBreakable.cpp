@@ -2,9 +2,12 @@
 
 #include "TemporalBreakable.h"
 #include "TemporalFX.h"
+#include "TemporalFracture.h"
+#include "TemporalShard.h"
 #include "TemporalRecorderComponent.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
@@ -43,6 +46,8 @@ void ATemporalBreakable::BeginPlay()
 	Mesh->SetWorldScale3D(Size / 100.f);
 	Mesh->OnComponentHit.AddDynamic(this, &ATemporalBreakable::OnHit);
 	Material = TemporalFX::MakeSolid(this, Color);
+	// El interior un poco más claro: se nota dónde se partió.
+	InteriorMaterial = TemporalFX::MakeSolid(this, FLinearColor(FMath::Min(Color.R * 1.35f, 1.f), FMath::Min(Color.G * 1.35f, 1.f), FMath::Min(Color.B * 1.35f, 1.f)));
 	TemporalFX::ApplyToAllSlots(Mesh, Material);
 }
 
@@ -76,13 +81,7 @@ void ATemporalBreakable::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 
 void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 {
-	if (bBroken)
-	{
-		return;
-	}
-
-	UStaticMesh* CubeMesh = Mesh->GetStaticMesh();
-	if (!CubeMesh)
+	if (bBroken || !Mesh->GetStaticMesh())
 	{
 		return;
 	}
@@ -91,15 +90,62 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 	Mesh->SetVisibility(false);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DestroyShards();
+	PendingImpact = ImpactPoint;
+	PendingDirection = Direction;
 
+	if (FractureMode == ETemporalFractureMode::Irregular)
+	{
+		SpawnIrregularShards(ImpactPoint);
+	}
+	else
+	{
+		SpawnCubeShards();
+	}
+
+	// Todos los pedazos forman un grupo: al apuntar a uno con R, se rebobinan juntos y el bloque se rearma.
+	const TArray<UTemporalRecorderComponent*> ShardRecorders = GetShardRecorders();
+	for (int32 i = 1; i < ShardRecorders.Num(); ++i)
+	{
+		ShardRecorders[0]->LinkWith(ShardRecorders[i]);
+	}
+
+	TemporalFX::Burst(this, ImpactPoint, FLinearColor(1.f, 0.6f, 0.2f), 0.8f);
+}
+
+void ATemporalBreakable::SpawnIrregularShards(const FVector& ImpactPoint)
+{
+	// Sin escala: el actor está escalado a Size/100 y la fractura trabaja en centímetros.
+	const FTransform Whole(GetActorRotation(), GetActorLocation());
+	const FVector Half = Size * 0.5f;
+	const FVector LocalImpact = Whole.InverseTransformPosition(ImpactPoint);
+	const TArray<FVector> Seeds = TemporalFracture::MakeSeeds(Half, NumShards, LocalImpact, FMath::Rand());
+	const TArray<FFractureCell> Cells = TemporalFracture::VoronoiFracture(Half, Seeds);
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FFractureCell& Cell : Cells)
+	{
+		const FVector Centroid = TemporalFracture::CellCentroid(Cell);
+		const FVector Location = Whole.TransformPosition(Centroid);
+		ATemporalShard* Shard = GetWorld()->SpawnActor<ATemporalShard>(ATemporalShard::StaticClass(), Location, Whole.Rotator(), Params);
+		if (!Shard)
+		{
+			continue;
+		}
+		Shard->Build(Cell, Centroid, Material, InteriorMaterial, ShardMemorySeconds);
+		AddShard(Shard, Shard->Mesh, Shard->Recorder, Location, PendingImpact, PendingDirection);
+	}
+}
+
+void ATemporalBreakable::SpawnCubeShards()
+{
+	UStaticMesh* CubeMesh = Mesh->GetStaticMesh();
 	const FIntVector Count(FMath::Max(1, Pieces.X), FMath::Max(1, Pieces.Y), FMath::Max(1, Pieces.Z));
 	const FVector PieceSize(Size.X / Count.X, Size.Y / Count.Y, Size.Z / Count.Z);
-	// Sin escala: el actor está escalado a Size/100 y Local ya viene en centímetros.
 	const FTransform Whole(GetActorRotation(), GetActorLocation());
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
 	for (int32 X = 0; X < Count.X; ++X)
 	{
 		for (int32 Y = 0; Y < Count.Y; ++Y)
@@ -108,7 +154,6 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 			{
 				const FVector Local = -Size * 0.5f + PieceSize * FVector(X + 0.5f, Y + 0.5f, Z + 0.5f);
 				const FVector Location = Whole.TransformPosition(Local);
-
 				AStaticMeshActor* Shard = GetWorld()->SpawnActor<AStaticMeshActor>(Location, Whole.Rotator(), Params);
 				if (!Shard)
 				{
@@ -128,34 +173,31 @@ void ATemporalBreakable::Break(FVector ImpactPoint, FVector Direction)
 				Recorder->MaxRecordSeconds = ShardMemorySeconds;
 				Recorder->RegisterComponent();
 				Shard->AddInstanceComponent(Recorder);
-				Recorder->OnRewindFinished.AddDynamic(this, &ATemporalBreakable::HandleShardRewindFinished);
-
-				// Salen disparados desde el punto del golpe, empujados también hacia donde iba el golpe.
-				const FVector Away = (Location - ImpactPoint).GetSafeNormal();
-				const FVector Push = (Away + Direction.GetSafeNormal() * 0.6f + FMath::VRand() * 0.25f).GetSafeNormal() * BlastStrength;
-				ShardMesh->AddImpulse(Push, NAME_None, /*bVelChange=*/true);
-				ShardMesh->AddAngularImpulseInDegrees(FMath::VRand() * 360.f, NAME_None, /*bVelChange=*/true);
-
-				Shards.Add(Shard);
-				ShardHomes.Add(Location);
+				AddShard(Shard, ShardMesh, Recorder, Location, PendingImpact, PendingDirection);
 			}
 		}
 	}
+}
 
-	// Todos los pedazos forman un grupo: al apuntar a uno con R, se rebobinan juntos y el bloque se rearma.
-	const TArray<UTemporalRecorderComponent*> ShardRecorders = GetShardRecorders();
-	for (int32 i = 1; i < ShardRecorders.Num(); ++i)
-	{
-		ShardRecorders[0]->LinkWith(ShardRecorders[i]);
-	}
+void ATemporalBreakable::AddShard(AActor* Shard, UPrimitiveComponent* Body, UTemporalRecorderComponent* Recorder, const FVector& Home,
+	const FVector& ImpactPoint, const FVector& Direction)
+{
+	Recorder->OnRewindFinished.AddDynamic(this, &ATemporalBreakable::HandleShardRewindFinished);
 
-	TemporalFX::Burst(this, ImpactPoint, FLinearColor(1.f, 0.6f, 0.2f), 0.8f);
+	// Salen disparados desde el punto del golpe, empujados también hacia donde iba el golpe.
+	const FVector Away = (Home - ImpactPoint).GetSafeNormal();
+	const FVector Push = (Away + Direction.GetSafeNormal() * 0.6f + FMath::VRand() * 0.25f).GetSafeNormal() * BlastStrength;
+	Body->AddImpulse(Push, NAME_None, /*bVelChange=*/true);
+	Body->AddAngularImpulseInDegrees(FMath::VRand() * 360.f, NAME_None, /*bVelChange=*/true);
+
+	Shards.Add(Shard);
+	ShardHomes.Add(Home);
 }
 
 TArray<UTemporalRecorderComponent*> ATemporalBreakable::GetShardRecorders() const
 {
 	TArray<UTemporalRecorderComponent*> Result;
-	for (const AStaticMeshActor* Shard : Shards)
+	for (const AActor* Shard : Shards)
 	{
 		if (UTemporalRecorderComponent* Recorder = IsValid(Shard) ? Shard->FindComponentByClass<UTemporalRecorderComponent>() : nullptr)
 		{
@@ -167,7 +209,7 @@ TArray<UTemporalRecorderComponent*> ATemporalBreakable::GetShardRecorders() cons
 
 void ATemporalBreakable::RewindShards(float Speed)
 {
-	for (AStaticMeshActor* Shard : Shards)
+	for (AActor* Shard : Shards)
 	{
 		if (UTemporalRecorderComponent* Recorder = IsValid(Shard) ? Shard->FindComponentByClass<UTemporalRecorderComponent>() : nullptr)
 		{
@@ -185,7 +227,7 @@ void ATemporalBreakable::HandleShardRewindFinished()
 	}
 
 	// La bala invertida rebobina rápido; quien ya terminó vuelve a velocidad normal para la R del jugador.
-	for (AStaticMeshActor* Shard : Shards)
+	for (AActor* Shard : Shards)
 	{
 		if (UTemporalRecorderComponent* Recorder = IsValid(Shard) ? Shard->FindComponentByClass<UTemporalRecorderComponent>() : nullptr)
 		{
@@ -199,7 +241,7 @@ void ATemporalBreakable::HandleShardRewindFinished()
 	// Solo cuando TODOS terminaron de rebobinar y quedaron cerca de su hueco.
 	for (int32 i = 0; i < Shards.Num(); ++i)
 	{
-		const AStaticMeshActor* Shard = Shards[i];
+		const AActor* Shard = Shards[i];
 		const UTemporalRecorderComponent* Recorder = IsValid(Shard) ? Shard->FindComponentByClass<UTemporalRecorderComponent>() : nullptr;
 		if (!Recorder || Recorder->IsRewinding() || FVector::Dist(Shard->GetActorLocation(), ShardHomes[i]) > 25.f)
 		{
@@ -229,7 +271,7 @@ void ATemporalBreakable::Restore()
 
 void ATemporalBreakable::DestroyShards()
 {
-	for (AStaticMeshActor* Shard : Shards)
+	for (AActor* Shard : Shards)
 	{
 		if (IsValid(Shard))
 		{
