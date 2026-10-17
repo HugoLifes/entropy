@@ -82,6 +82,21 @@ void AEchoGhost::Tick(float DeltaTime)
 		FTransform Blended;
 		Blended.Blend(Frames[FrameIndex - 1].Transform, Frames[FrameIndex].Transform, Alpha);
 		SetActorTransform(Blended, false, nullptr, ETeleportType::TeleportPhysics);
+
+		// También la pose, hueso por hueso: la animación del eco ya no salta de frame en frame.
+		const TArray<FTransform>& FromPose = Frames[FrameIndex - 1].Pose;
+		const TArray<FTransform>& ToPose = Frames[FrameIndex].Pose;
+		const int32 BoneCount = PoseMesh->BoneSpaceTransforms.Num();
+		if (BoneCount > 0 && FromPose.Num() == BoneCount && ToPose.Num() == BoneCount)
+		{
+			for (int32 i = 0; i < BoneCount; ++i)
+			{
+				FTransform Bone = FromPose[i];
+				Bone.BlendWith(ToPose[i], Alpha);
+				PoseMesh->BoneSpaceTransforms[i] = Bone;
+			}
+			PoseMesh->MarkRefreshTransformDirty();
+		}
 	}
 
 	if (FrameIndex >= Frames.Num())
