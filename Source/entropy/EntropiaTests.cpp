@@ -458,6 +458,18 @@ bool FEntropiaDilationReleaseSource::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationActorRate, "Entropia.Dilation.ActorRateIsSlowestOfOwnAndWorld", EntropiaTestFlags::Flags)
+bool FEntropiaDilationActorRate::RunTest(const FString& Parameters)
+{
+	// Lo que se escribe en CustomTimeDilation para que el ritmo real (propio × mundo) sea el MÁS LENTO de los dos.
+	TestEqual(TEXT("Ojo lento (0.25) en Sobremarcha (0.25): la bala va a 0.25, no a 0.0625"), UTemporalDilationSubsystem::ActorTimeFor(0.25f, 0.25f), 1.f, 0.0001f);
+	TestEqual(TEXT("Sin cámara lenta global: su propia velocidad"), UTemporalDilationSubsystem::ActorTimeFor(0.25f, 1.f), 0.25f, 0.0001f);
+	TestEqual(TEXT("Congelada sigue congelada"), UTemporalDilationSubsystem::ActorTimeFor(0.f, 0.3f), 0.f, 0.0001f);
+	TestEqual(TEXT("Más lenta que el mundo: 0.1 real con el mundo a 0.25"), UTemporalDilationSubsystem::ActorTimeFor(0.1f, 0.25f), 0.4f, 0.0001f);
+	TestEqual(TEXT("Sin pedidos: 1 (el mundo ya la frena)"), UTemporalDilationSubsystem::ActorTimeFor(1.f, 0.25f), 1.f, 0.0001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationPlayerCompensation, "Entropia.Dilation.PlayerCompensation", EntropiaTestFlags::Flags)
 bool FEntropiaDilationPlayerCompensation::RunTest(const FString& Parameters)
 {

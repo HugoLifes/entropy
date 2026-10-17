@@ -54,6 +54,13 @@ protected:
 private:
 	void KnockDown(const FVector& Direction, float Impulse);
 	void Recover(bool bWithEffect);
+	/** Congela o suelta el muñeco de trapo (la física del cuerpo no respeta CustomTimeDilation). */
+	void SetRagdollFrozen(bool bFrozen);
+
+	/** Velocidades de cada hueso al congelarse el muñeco de trapo (se devuelven al soltarlo). */
+	TArray<FVector> FrozenLinear;
+	TArray<FVector> FrozenAngular;
+	bool bRagdollFrozen = false;
 
 	FVector HomeLocation = FVector::ZeroVector;
 	FRotator HomeRotation = FRotator::ZeroRotator;

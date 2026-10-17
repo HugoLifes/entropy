@@ -74,6 +74,12 @@ public:
 	/** El mundo va lento ReflexSeconds y tú normal. Lo llama la esquiva perfecta (y el modo tour). */
 	void StartReflex();
 
+	/** Corta el dash en seco (sin velocidad horizontal): al rematar o al morir. */
+	void CancelDash();
+
+	/** Corta el tiempo de reflejo (al morir). */
+	void CancelReflex() { EndReflex(); }
+
 	/** Dirección del dash: hacia donde te mueves (plano y normalizado) o, si estás quieto, hacia donde miras. */
 	static FVector ComputeDashDirection(const FVector& MoveInput, const FVector& Facing);
 

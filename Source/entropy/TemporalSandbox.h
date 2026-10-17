@@ -234,6 +234,9 @@ private:
 	/** Cosas que creó un paso del tour y hay que borrar después. */
 	TArray<TWeakObjectPtr<AActor>> TourTemps;
 
+	/** Una posición que un paso del tour guarda para que el siguiente mida cuánto se movió algo. */
+	FVector TourMark = FVector::ZeroVector;
+
 	/** Modo tour: una bala que le pega al jugador, desde From hacia Direction. */
 	ATemporalProjectile* SpawnTourBullet(const FVector& From, const FVector& Direction);
 	void ClearTourTemps();

@@ -236,11 +236,25 @@ void ATemporalSandbox::OnPlayerDied()
 
 void ATemporalSandbox::RespawnAfterDeath()
 {
-	// Morir suelta todo: F, R, Sobremarcha y apuntar (nada queda pegado al reaparecer).
+	// Morir suelta todo: F, R, Sobremarcha, apuntar, lo detenido, el dash, el tiempo de reflejo y el remate
+	// (nada queda pegado ni en cámara lenta al reaparecer).
 	EndPlayerPowersForTeleport();
 	if (PlayerOverdrive)
 	{
 		PlayerOverdrive->StopOverdrive();
+	}
+	if (PlayerTimeStop)
+	{
+		PlayerTimeStop->ReleaseAll();
+	}
+	if (PlayerDash)
+	{
+		PlayerDash->CancelDash();
+		PlayerDash->CancelReflex();
+	}
+	if (PlayerTakedown)
+	{
+		PlayerTakedown->Cancel();
 	}
 	if (PlayerAim)
 	{
@@ -481,7 +495,8 @@ void ATemporalSandbox::OnAimReleased()
 void ATemporalSandbox::OnPrimaryPressed()
 {
 	// Si el HUD muestra "CLIC: REMATE", el clic remata; si no, detiene lo que está en la mira.
-	if (PlayerTakedown && PlayerTakedown->TryTakedown())
+	// Durante un remate los clics extra no hacen nada (antes detenían al maniquí a medio golpe).
+	if (PlayerTakedown && (PlayerTakedown->IsBusy() || PlayerTakedown->TryTakedown()))
 	{
 		return;
 	}
@@ -914,6 +929,77 @@ void ATemporalSandbox::StartTour()
 			Mannequin(0) && Mannequin(0)->IsKnockedDown() ? 1 : 0, Mannequin(2) && Mannequin(2)->IsKnockedDown() ? 1 : 0);
 		if (PlayerHealth) { PlayerHealth->ClearInvulnerable(); }
 	});
+	// Revisión final · Detener con la mira de verdad: apuntando (Ojo lento) a una bala que viene hacia ti y clic izquierdo.
+	Add(TEXT("detener_mira_prepara"), 0.3f, [this, Player]
+	{
+		OnRoom5();
+		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		if (PlayerAim) { PlayerAim->SetAiming(true); }
+		ACharacter* Character = Player();
+		AController* Controller = Character ? Character->GetController() : nullptr;
+		if (Controller)
+		{
+			const FVector Forward = FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f).Vector();
+			SpawnTourBullet(Character->GetActorLocation() + FVector(0.f, 0.f, 20.f) + Forward * 650.f, -Forward);
+		}
+	});
+	Add(TEXT("detener_mira_apunta"), 0.15f, [this]
+	{
+		// La cámara se actualiza al frame siguiente: el clic va en el paso que sigue.
+		APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+		AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
+		if (PC && Bullet)
+		{
+			FVector CameraLocation;
+			FRotator CameraRotation;
+			PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
+			PC->SetControlRotation((Bullet->GetActorLocation() - CameraLocation).Rotation());
+		}
+	});
+	Add(TEXT("detener_mira_clic"), 1.f, [this]
+	{
+		OnPrimaryPressed();
+		AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const AActor* Hovered = PlayerAim ? PlayerAim->GetHoveredTarget() : nullptr;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR detener_con_mira detenida=%d congelada=%d seleccion=%s"),
+			Bullet && PlayerTimeStop && PlayerTimeStop->IsStoppedByMe(Bullet) ? 1 : 0, Bullet && Dilation && Dilation->IsFrozen(Bullet) ? 1 : 0,
+			Hovered ? *Hovered->GetClass()->GetName() : TEXT("nada"));
+	});
+	Add(TEXT("detener_mira_fin"), 0.3f, [this]
+	{
+		if (PlayerTimeStop) { PlayerTimeStop->ReleaseAll(); }
+		if (PlayerAim) { PlayerAim->SetAiming(false); }
+		ClearTourTemps();
+	});
+	// Revisión final · Dash hacia la espalda de un maniquí y rematar a medio dash (con doble clic).
+	Add(TEXT("dash_remate_prepara"), 0.3f, [this, Mannequin, StandAt]
+	{
+		if (ATemporalMannequin* Target = Mannequin(0))
+		{
+			StandAt(Target->GetActorLocation() - Target->GetActorForwardVector() * 260.f, Target->GetActorLocation());
+		}
+	});
+	Add(TEXT("dash_hacia_maniqui"), 0.1f, [this]
+	{
+		const bool bOk = PlayerDash && PlayerDash->TryDash();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dash_hacia_maniqui dash=%d"), bOk ? 1 : 0);
+	});
+	Add(TEXT("remate_a_medio_dash"), 0.8f, [this]
+	{
+		OnPrimaryPressed();
+		const bool bBusy = PlayerTakedown && PlayerTakedown->IsBusy();
+		const bool bStillDashing = PlayerDash && PlayerDash->IsDashing();
+		OnPrimaryPressed();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR remate_en_dash remate=%d sigue_dash=%d detenidos_tras_doble_clic=%d"),
+			bBusy ? 1 : 0, bStillDashing ? 1 : 0, PlayerTimeStop ? PlayerTimeStop->NumStopped() : -1);
+	});
+	Add(TEXT("remate_en_dash_fin"), 0.3f, [this]
+	{
+		if (PlayerTimeStop) { PlayerTimeStop->ReleaseAll(); }
+		if (PlayerHealth) { PlayerHealth->ClearInvulnerable(); }
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		GoToRoom(1);
@@ -1344,6 +1430,90 @@ void ATemporalSandbox::BuildChaosSteps()
 		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
 		OnPrimaryPressed();
 		OnRoom4();
+	});
+	// Revisión final · Ojo lento en Sobremarcha: la bala va a 0.25 (gana la más lenta), no a 0.25 × 0.25.
+	Add(TEXT("ojo_en_sobremarcha"), 0.3f, [this]
+	{
+		OnRoom5();
+		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		if (PlayerAim) { PlayerAim->SetAiming(true); }
+		if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+		{
+			const FVector Forward = Pawn->GetActorForwardVector();
+			const FVector Right = Pawn->GetActorRightVector();
+			SpawnTourBullet(Pawn->GetActorLocation() + FVector(0.f, 0.f, 20.f) + Forward * 250.f - Right * 150.f, Right);
+		}
+	});
+	Add(TEXT("ojo_en_sobremarcha_revisa"), 0.3f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
+		const float Rate = Bullet && Dilation ? Bullet->CustomTimeDilation * Dilation->GetGlobalDilation() : -1.f;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_en_sobremarcha ritmo_bala=%.3f (esperado 0.250)"), Rate);
+		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
+		if (PlayerAim) { PlayerAim->SetAiming(false); }
+		ClearTourTemps();
+	});
+	// Revisión final · Detener a un maniquí que va cayendo: el cuerpo debe quedarse quieto.
+	auto StandBehind = [this](int32 Index, float Distance)
+	{
+		ATemporalMannequin* Target = ReflexRoom && ReflexRoom->GetMannequins().IsValidIndex(Index) ? ReflexRoom->GetMannequins()[Index].Get() : nullptr;
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			Pawn->SetActorLocation(Target->GetActorLocation() - Target->GetActorForwardVector() * Distance, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		return Target;
+	};
+	Add(TEXT("remate_para_detener_cayendo"), 0.35f, [this, StandBehind]
+	{
+		OnRoom5();
+		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		StandBehind(0, 120.f);
+		OnPrimaryPressed();
+	});
+	Add(TEXT("detener_cayendo"), 0.5f, [this]
+	{
+		ATemporalMannequin* Target = ReflexRoom && ReflexRoom->GetMannequins().Num() > 0 ? ReflexRoom->GetMannequins()[0].Get() : nullptr;
+		if (Target && PlayerTimeStop)
+		{
+			PlayerTimeStop->StopActor(Target);
+			TourMark = Target->GetMesh()->GetBoneLocation(TEXT("pelvis"));
+		}
+	});
+	Add(TEXT("detener_cayendo_revisa"), 0.3f, [this]
+	{
+		ATemporalMannequin* Target = ReflexRoom && ReflexRoom->GetMannequins().Num() > 0 ? ReflexRoom->GetMannequins()[0].Get() : nullptr;
+		const float Moved = Target ? FVector::Dist(TourMark, Target->GetMesh()->GetBoneLocation(TEXT("pelvis"))) : -1.f;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR maniqui_cayendo_detenido se_movio=%.1f cm tirado=%d"), Moved, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (PlayerTimeStop) { PlayerTimeStop->ReleaseAll(); }
+	});
+	// Revisión final · Morir con todo activo (dash, reflejo, algo detenido, remate): al reaparecer no queda nada.
+	Add(TEXT("morir_con_todo_activo"), 0.2f, [this, StandBehind]
+	{
+		OnRoom5();
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		StandBehind(0, 120.f);
+		OnDash();
+		if (PlayerDash) { PlayerDash->StartReflex(); }
+		if (PlayerTimeStop && ReflexRoom && ReflexRoom->GetTurrets().Num() > 0) { PlayerTimeStop->StopActor(ReflexRoom->GetTurrets()[0]); }
+		OnPrimaryPressed();
+		if (PlayerHealth)
+		{
+			PlayerHealth->ClearInvulnerable();
+			PlayerHealth->ApplyDamage(1000.f);
+		}
+	});
+	Add(TEXT("morir_con_todo_revisa"), 0.5f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tras_morir_con_todo global=%.2f detenidos=%d dash=%d reflejo=%d remate=%d"),
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, PlayerTimeStop ? PlayerTimeStop->NumStopped() : -1,
+			PlayerDash && PlayerDash->IsDashing() ? 1 : 0, PlayerDash && PlayerDash->IsReflexActive() ? 1 : 0,
+			PlayerTakedown && PlayerTakedown->IsBusy() ? 1 : 0);
 	});
 	Add(TEXT("remate_revisa"), 1.f, [this]
 	{

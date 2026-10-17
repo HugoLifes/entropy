@@ -1,7 +1,8 @@
 // ENTROPÍA · Árbitro del tiempo (Fase 3)
 // Cada poder PIDE una velocidad de tiempo para un actor (o para el mundo entero) y la SUELTA al terminar.
 // Gana la más lenta: no se multiplican. Así una bala congelada por una burbuja no se descongela cuando el Ojo lento
-// la suelta, y la Sobremarcha junto con el tiempo de reflejo no dejan el mundo a 0.25 × 0.3.
+// la suelta, y la Sobremarcha junto con el tiempo de reflejo no dejan el mundo a 0.25 × 0.3. Tampoco se multiplica
+// lo propio con lo global: una bala con Ojo lento (0.25) durante la Sobremarcha (0.25) va a 0.25, no a 0.0625.
 // Es el único que escribe CustomTimeDilation y la dilatación global. En los tiempos lentos globales el jugador
 // siempre va a velocidad normal (su propia dilatación los compensa).
 // La física de Unreal no respeta CustomTimeDilation: los cuerpos con física se congelan o se frenan a mano aquí.
@@ -53,6 +54,12 @@ public:
 	/** Velocidad propia del jugador cuando el mundo va a GlobalDilation: así se ve a velocidad normal. */
 	static float PlayerTimeFor(float OwnDilation, float GlobalDilation);
 
+	/**
+	 * Lo que se escribe en CustomTimeDilation de cualquier otro actor para que su ritmo real (propio × mundo) sea
+	 * el más lento de los dos: min(Own, Global) / Global.
+	 */
+	static float ActorTimeFor(float OwnDilation, float GlobalDilation);
+
 	void Request(AActor* Actor, const void* Source, float Dilation);
 	void Release(AActor* Actor, const void* Source);
 	void ReleaseSource(const void* Source);
@@ -84,8 +91,12 @@ private:
 		FVector AngularVelocity = FVector::ZeroVector;
 	};
 
-	void Apply(AActor* Actor, float OldDilation, float NewDilation);
-	void ApplyBody(AActor* Actor, float OldDilation, float NewDilation);
+	/** Vuelve a calcular y aplicar la velocidad de un actor (CustomTimeDilation y su física). */
+	void Refresh(AActor* Actor);
+	/** Tras cambiar la dilatación global: todos los actores con pedidos. */
+	void RefreshAll();
+	/** Factores = lo escrito en CustomTimeDilation (el mundo ya frena la física por su cuenta). */
+	void ApplyBody(AActor* Actor, float OldFactor, float NewFactor);
 	void ApplyPlayer();
 	APawn* GetPlayer() const;
 	/** Si la clave era de un actor ya destruido (y la dirección se reusó), se olvida. */
@@ -94,5 +105,7 @@ private:
 	FTemporalDilationLedger Actors;
 	FTemporalDilationLedger Global;
 	TMap<const void*, TWeakObjectPtr<AActor>> KeyActors;
+	/** El factor aplicado ahora a cada actor con pedidos (para escalar su física al cambiar). */
+	TMap<const void*, float> AppliedTime;
 	TMap<TWeakObjectPtr<AActor>, FBodyState> Bodies;
 };

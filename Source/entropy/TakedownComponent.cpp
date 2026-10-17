@@ -2,6 +2,7 @@
 
 #include "TakedownComponent.h"
 #include "InverseStepComponent.h"
+#include "TemporalDashComponent.h"
 #include "TemporalDilation.h"
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
@@ -113,6 +114,11 @@ bool UTakedownComponent::TryTakedown()
 	{
 		Facing = Character->GetActorForwardVector();
 	}
+	// Si venías en dash, el dash se corta aquí: si no, seguiría empujándote durante el golpe.
+	if (UTemporalDashComponent* Dash = Character->FindComponentByClass<UTemporalDashComponent>())
+	{
+		Dash->CancelDash();
+	}
 	FVector Spot = Target->GetActorLocation() - Facing * AlignDistance;
 	Spot.Z = Character->GetActorLocation().Z;
 	Character->SetActorLocation(Spot, /*bSweep=*/true);
@@ -146,6 +152,22 @@ bool UTakedownComponent::TryTakedown()
 	bHitLanded = false;
 	Available = nullptr;
 	return true;
+}
+
+void UTakedownComponent::Cancel()
+{
+	EndSlow();
+	BusyTimer = 0.f;
+	Elapsed = 0.f;
+	bHitLanded = true;
+	Victim = nullptr;
+	Available = nullptr;
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	if (Anim && AttackMontage && Anim->Montage_IsPlaying(AttackMontage))
+	{
+		Anim->Montage_Stop(0.1f, AttackMontage);
+	}
 }
 
 void UTakedownComponent::EndSlow()

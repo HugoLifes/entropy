@@ -56,6 +56,9 @@ public:
 
 	bool IsBusy() const { return BusyTimer > 0.f; }
 
+	/** Corta el remate en curso (al morir): sin cámara lenta, sin golpe pendiente, sin animación. */
+	void Cancel();
+
 	/** ¿Se puede rematar? Cerca y (a su espalda o congelado). Lógica pura, probada. */
 	static bool CanTakedown(const FVector& Attacker, const FVector& Target, const FVector& TargetForward, bool bFrozen, float InMaxDistance, float InBehindAngle);
 

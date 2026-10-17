@@ -210,6 +210,21 @@ void UTemporalDashComponent::EndReflex()
 	}
 }
 
+void UTemporalDashComponent::CancelDash()
+{
+	if (!bDashing)
+	{
+		return;
+	}
+	EndDash();
+	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+	{
+		FVector& Velocity = Character->GetCharacterMovement()->Velocity;
+		Velocity.X = 0.f;
+		Velocity.Y = 0.f;
+	}
+}
+
 void UTemporalDashComponent::EndDash()
 {
 	bDashing = false;

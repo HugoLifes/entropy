@@ -55,6 +55,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "100"))
 	float MaxDistance = 3500.f;
 
+	/** Las balas se seleccionan primero si están a menos de estos grados de la mira (aunque haya algo grande detrás). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.5"))
+	float BulletAngleDegrees = 6.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
 	FLinearColor HighlightColor = FLinearColor(1.f, 0.65f, 0.15f, 0.35f);
 

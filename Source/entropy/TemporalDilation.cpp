@@ -91,6 +91,12 @@ float UTemporalDilationSubsystem::PlayerTimeFor(float OwnDilation, float GlobalD
 	return OwnDilation / FMath::Max(GlobalDilation, 0.0001f);
 }
 
+float UTemporalDilationSubsystem::ActorTimeFor(float OwnDilation, float GlobalDilation)
+{
+	const float SafeGlobal = FMath::Max(GlobalDilation, 0.0001f);
+	return FMath::Min(OwnDilation, SafeGlobal) / SafeGlobal;
+}
+
 APawn* UTemporalDilationSubsystem::GetPlayer() const
 {
 	return UGameplayStatics::GetPlayerPawn(this, 0);
@@ -103,6 +109,7 @@ void UTemporalDilationSubsystem::ForgetIfStale(AActor* Actor)
 	{
 		Actors.RemoveKey(Actor);
 		KeyActors.Remove(Actor);
+		AppliedTime.Remove(Actor);
 	}
 }
 
@@ -114,10 +121,9 @@ void UTemporalDilationSubsystem::Request(AActor* Actor, const void* Source, floa
 	}
 	ForgetIfStale(Actor);
 	KeyActors.Add(Actor, Actor);
-	const float Before = Actors.Get(Actor);
 	if (Actors.Request(Actor, Source, Dilation))
 	{
-		Apply(Actor, Before, Actors.Get(Actor));
+		Refresh(Actor);
 	}
 }
 
@@ -128,40 +134,32 @@ void UTemporalDilationSubsystem::Release(AActor* Actor, const void* Source)
 		return;
 	}
 	ForgetIfStale(Actor);
-	const float Before = Actors.Get(Actor);
 	const bool bChanged = Actors.Release(Actor, Source);
+	if (bChanged && IsValid(Actor))
+	{
+		Refresh(Actor);
+	}
 	if (!Actors.Has(Actor))
 	{
 		KeyActors.Remove(Actor);
-	}
-	if (bChanged && IsValid(Actor))
-	{
-		Apply(Actor, Before, Actors.Get(Actor));
+		AppliedTime.Remove(Actor);
 	}
 }
 
 void UTemporalDilationSubsystem::ReleaseSource(const void* Source)
 {
-	// Guardamos las velocidades de antes para saber cuánto escalar la física de cada uno.
-	TArray<const void*> Keys;
-	Actors.GetKeys(Keys);
-	TMap<const void*, float> Before;
-	for (const void* Key : Keys)
-	{
-		Before.Add(Key, Actors.Get(Key));
-	}
-
 	for (const void* Key : Actors.ReleaseSource(Source))
 	{
 		const TWeakObjectPtr<AActor>* Weak = KeyActors.Find(Key);
 		AActor* Actor = Weak ? Weak->Get() : nullptr;
+		if (Actor == Key && IsValid(Actor))
+		{
+			Refresh(Actor);
+		}
 		if (!Actors.Has(Key))
 		{
 			KeyActors.Remove(Key);
-		}
-		if (Actor == Key && IsValid(Actor))
-		{
-			Apply(Actor, Before.FindRef(Key), Actors.Get(Key));
+			AppliedTime.Remove(Key);
 		}
 	}
 	ReleaseGlobal(Source);
@@ -177,6 +175,7 @@ void UTemporalDilationSubsystem::RequestGlobal(const void* Source, float WorldDi
 	if (Global.Request(this, Source, FMath::Clamp(WorldDilation, 0.01f, 1.f)))
 	{
 		UGameplayStatics::SetGlobalTimeDilation(this, GetGlobalDilation());
+		RefreshAll();
 		ApplyPlayer();
 	}
 }
@@ -186,6 +185,7 @@ void UTemporalDilationSubsystem::ReleaseGlobal(const void* Source)
 	if (Global.Release(this, Source))
 	{
 		UGameplayStatics::SetGlobalTimeDilation(this, GetGlobalDilation());
+		RefreshAll();
 		ApplyPlayer();
 	}
 }
@@ -198,20 +198,43 @@ void UTemporalDilationSubsystem::ApplyPlayer()
 	}
 }
 
-void UTemporalDilationSubsystem::Apply(AActor* Actor, float OldDilation, float NewDilation)
+void UTemporalDilationSubsystem::Refresh(AActor* Actor)
 {
 	if (Actor == GetPlayer())
 	{
 		ApplyPlayer();
+		return;
 	}
-	else
+	const float* Applied = AppliedTime.Find(Actor);
+	const float OldFactor = Applied ? *Applied : 1.f;
+	const float NewFactor = ActorTimeFor(Actors.Get(Actor), GetGlobalDilation());
+	Actor->CustomTimeDilation = NewFactor;
+	if (!FMath::IsNearlyEqual(OldFactor, NewFactor))
 	{
-		Actor->CustomTimeDilation = NewDilation;
+		ApplyBody(Actor, OldFactor, NewFactor);
 	}
-	ApplyBody(Actor, OldDilation, NewDilation);
+	if (Actors.Has(Actor))
+	{
+		AppliedTime.Add(Actor, NewFactor);
+	}
 }
 
-void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldDilation, float NewDilation)
+void UTemporalDilationSubsystem::RefreshAll()
+{
+	TArray<const void*> Keys;
+	KeyActors.GetKeys(Keys);
+	for (const void* Key : Keys)
+	{
+		const TWeakObjectPtr<AActor>* Weak = KeyActors.Find(Key);
+		AActor* Actor = Weak ? Weak->Get() : nullptr;
+		if (Actor == Key && IsValid(Actor))
+		{
+			Refresh(Actor);
+		}
+	}
+}
+
+void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldFactor, float NewFactor)
 {
 	UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
 	const FBodyState* Found = Bodies.Find(Actor);
@@ -229,7 +252,7 @@ void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldDilation, flo
 	FVector Angular = Prev.AngularVelocity;
 	if (!Prev.bFrozen && bSimulating)
 	{
-		const float ToReal = Prev.bSlowed ? 1.f / FMath::Max(OldDilation, 0.0001f) : 1.f;
+		const float ToReal = Prev.bSlowed ? 1.f / FMath::Max(OldFactor, 0.0001f) : 1.f;
 		Linear = Root->GetPhysicsLinearVelocity() * ToReal;
 		Angular = Root->GetPhysicsAngularVelocityInDegrees() * ToReal;
 	}
@@ -237,7 +260,7 @@ void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldDilation, flo
 	FBodyState Next;
 	Next.bHadGravity = (Prev.bFrozen || Prev.bSlowed) ? Prev.bHadGravity : Root->IsGravityEnabled();
 
-	if (NewDilation < FrozenBelow)
+	if (NewFactor < FrozenBelow)
 	{
 		Next.bFrozen = true;
 		Next.LinearVelocity = Linear;
@@ -257,9 +280,9 @@ void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldDilation, flo
 		Root->SetSimulatePhysics(true);
 	}
 
-	// En cámara lenta todo pasa NewDilation veces más lento: la velocidad se escala por NewDilation
-	// y la gravedad (en Tick) por NewDilation². Aproximación: los choques siguen siendo a velocidad real.
-	if (!FMath::IsNearlyEqual(NewDilation, 1.f))
+	// En cámara lenta todo pasa NewFactor veces más lento: la velocidad se escala por NewFactor
+	// y la gravedad (en Tick) por NewFactor². Aproximación: los choques siguen siendo a velocidad real.
+	if (!FMath::IsNearlyEqual(NewFactor, 1.f))
 	{
 		Next.bSlowed = true;
 		Root->SetEnableGravity(false);
@@ -274,8 +297,8 @@ void UTemporalDilationSubsystem::ApplyBody(AActor* Actor, float OldDilation, flo
 	// Si el Registro Temporal lo está rebobinando, la física está apagada: no tocamos la velocidad.
 	if (Root->IsSimulatingPhysics())
 	{
-		Root->SetPhysicsLinearVelocity(Linear * NewDilation);
-		Root->SetPhysicsAngularVelocityInDegrees(Angular * NewDilation);
+		Root->SetPhysicsLinearVelocity(Linear * NewFactor);
+		Root->SetPhysicsAngularVelocityInDegrees(Angular * NewFactor);
 	}
 }
 
@@ -287,6 +310,7 @@ void UTemporalDilationSubsystem::Tick(float DeltaTime)
 		if (!It.Value().IsValid())
 		{
 			Actors.RemoveKey(It.Key());
+			AppliedTime.Remove(It.Key());
 			It.RemoveCurrent();
 		}
 	}
@@ -304,8 +328,10 @@ void UTemporalDilationSubsystem::Tick(float DeltaTime)
 		UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
 		if (It.Value().bSlowed && It.Value().bHadGravity && Root && Root->IsSimulatingPhysics())
 		{
-			const float Dilation = Actors.Get(Actor);
-			Root->AddForce(FVector(0.f, 0.f, GravityZ * Dilation * Dilation), NAME_None, /*bAccelChange=*/true);
+			// El mundo ya frena la física por su cuenta: aquí solo va el factor propio (lo escrito en CustomTimeDilation).
+			const float* Applied = AppliedTime.Find(Actor);
+			const float Factor = Applied ? *Applied : 1.f;
+			Root->AddForce(FVector(0.f, 0.f, GravityZ * Factor * Factor), NAME_None, /*bAccelChange=*/true);
 		}
 	}
 

@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "PhysicsEngine/BodyInstance.h"
 
 ATemporalMannequin::ATemporalMannequin()
 {
@@ -96,6 +97,8 @@ void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
 	GetCharacterMovement()->DisableMovement();
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	// Así la burbuja de Brecha también lo detecta tirado (la cápsula ya no choca).
+	Body->SetGenerateOverlapEvents(true);
 	Body->SetSimulatePhysics(true);
 	Body->WakeAllRigidBodies();
 	Body->AddImpulseToAllBodiesBelow(Direction * Impulse, NAME_None, /*bVelChange=*/true, /*bIncludeSelf=*/true);
@@ -105,8 +108,13 @@ void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
 
 void ATemporalMannequin::Recover(bool bWithEffect)
 {
+	if (bRagdollFrozen)
+	{
+		SetRagdollFrozen(false);
+	}
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetSimulatePhysics(false);
+	Body->SetGenerateOverlapEvents(false);
 	Body->SetCollisionProfileName(TEXT("CharacterMesh"));
 	Body->AttachToComponent(GetCapsuleComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	Body->SetRelativeLocationAndRotation(MeshRelativeLocation, MeshRelativeRotation);
@@ -126,6 +134,38 @@ void ATemporalMannequin::Recover(bool bWithEffect)
 		}
 		TemporalFX::Burst(this, HomeLocation, FLinearColor(0.4f, 0.8f, 1.f), 0.6f);
 	}
+}
+
+void ATemporalMannequin::SetRagdollFrozen(bool bFrozen)
+{
+	bRagdollFrozen = bFrozen;
+	USkeletalMeshComponent* Body = GetMesh();
+	if (bFrozen)
+	{
+		FrozenLinear.Reset();
+		FrozenAngular.Reset();
+		for (const FBodyInstance* Bone : Body->Bodies)
+		{
+			FrozenLinear.Add(Bone ? Bone->GetUnrealWorldVelocity() : FVector::ZeroVector);
+			FrozenAngular.Add(Bone ? Bone->GetUnrealWorldAngularVelocityInRadians() : FVector::ZeroVector);
+		}
+		Body->SetEnableGravity(false);
+		Body->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+		Body->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		return;
+	}
+	Body->SetEnableGravity(true);
+	Body->WakeAllRigidBodies();
+	for (int32 i = 0; i < Body->Bodies.Num() && i < FrozenLinear.Num(); ++i)
+	{
+		if (FBodyInstance* Bone = Body->Bodies[i])
+		{
+			Bone->SetLinearVelocity(FrozenLinear[i], false);
+			Bone->SetAngularVelocityInRadians(FrozenAngular[i], false);
+		}
+	}
+	FrozenLinear.Reset();
+	FrozenAngular.Reset();
 }
 
 void ATemporalMannequin::ResetMannequin()
@@ -155,6 +195,18 @@ void ATemporalMannequin::Tick(float DeltaTime)
 	}
 	if (bKnockedDown)
 	{
+		// Tirado y congelado (Detener o burbuja): el muñeco de trapo se queda quieto en el aire o a media caída.
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const bool bFrozenNow = Dilation && Dilation->IsFrozen(this);
+		if (bFrozenNow != bRagdollFrozen)
+		{
+			SetRagdollFrozen(bFrozenNow);
+		}
+		if (bRagdollFrozen)
+		{
+			GetMesh()->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			GetMesh()->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		}
 		DownTime += DeltaTime;
 		if (DownTime >= RecoverSeconds)
 		{

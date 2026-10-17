@@ -2,11 +2,13 @@
 
 #include "TemporalAimComponent.h"
 #include "TemporalDashComponent.h"
+#include "TemporalProjectile.h"
 #include "TemporalFX.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
 
 #include "Components/MeshComponent.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -102,6 +104,45 @@ AActor* UTemporalAimComponent::FindTarget() const
 	{
 		return Actor && (Actor->FindComponentByClass<UTemporalRecorderComponent>() || Subsystem->IsTimeTarget(Actor));
 	};
+
+	// 0) Las balas primero: son chicas y rápidas, y casi siempre tienen detrás la torreta que las disparó (que si no
+	//    ganaría por estar "justo bajo la mira"). Una bala visible cerca de la mira gana.
+	{
+		AActor* BestBullet = nullptr;
+		float BestEdge = 0.f;
+		float BestCenter = 0.f;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			FVector Center, Extent;
+			It->GetActorBounds(false, Center, Extent);
+			const FVector ToBullet = Center - ViewLocation;
+			const float Distance = ToBullet.Size();
+			if (Distance < 1.f || Distance > MaxDistance)
+			{
+				continue;
+			}
+			const float CenterAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ToBullet / Distance, Forward), -1.f, 1.f)));
+			const float EdgeAngle = CenterAngle - FMath::RadiansToDegrees(FMath::Atan(Extent.Size() / Distance));
+			if (EdgeAngle >= BulletAngleDegrees || (BestBullet && !IsBetterAim(EdgeAngle, CenterAngle, BestEdge, BestCenter)))
+			{
+				continue;
+			}
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(TemporalAimBullet), false, Pawn);
+			Params.AddIgnoredActor(*It);
+			FHitResult Hit;
+			if (GetWorld()->LineTraceSingleByChannel(Hit, ViewLocation, Center, ECC_Visibility, Params))
+			{
+				continue;
+			}
+			BestBullet = *It;
+			BestEdge = EdgeAngle;
+			BestCenter = CenterAngle;
+		}
+		if (BestBullet)
+		{
+			return BestBullet;
+		}
+	}
 
 	// 1) Lo que está justo bajo la mira gana siempre (cajas, plataformas, pedazos: todo lo que bloquea la vista).
 	{
