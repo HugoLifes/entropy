@@ -930,35 +930,41 @@ void ATemporalSandbox::StartTour()
 		if (PlayerHealth) { PlayerHealth->ClearInvulnerable(); }
 	});
 	// Revisión final · Detener con la mira de verdad: apuntando (Ojo lento) a una bala que viene hacia ti y clic izquierdo.
-	Add(TEXT("detener_mira_prepara"), 0.3f, [this, Player]
+	Add(TEXT("detener_mira_prepara"), 0.5f, [this]
 	{
 		OnRoom5();
 		if (PlayerHealth) { PlayerHealth->SetInvulnerable(30.f); }
 		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
 		if (PlayerAim) { PlayerAim->SetAiming(true); }
-		ACharacter* Character = Player();
-		AController* Controller = Character ? Character->GetController() : nullptr;
-		if (Controller)
-		{
-			const FVector Forward = FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f).Vector();
-			SpawnTourBullet(Character->GetActorLocation() + FVector(0.f, 0.f, 20.f) + Forward * 650.f, -Forward);
-		}
 	});
-	Add(TEXT("detener_mira_apunta"), 0.15f, [this]
+	// La bala viene justo por la línea de la mira (como cuando la sigues con el ratón); detrás quedan la torreta y
+	// los maniquíes, que antes se robaban el clic.
+	Add(TEXT("detener_mira_bala"), 0.25f, [this]
 	{
-		// La cámara se actualiza al frame siguiente: el clic va en el paso que sigue.
-		APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-		AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
-		if (PC && Bullet)
+		const APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+		if (PC)
 		{
 			FVector CameraLocation;
 			FRotator CameraRotation;
 			PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
-			PC->SetControlRotation((Bullet->GetActorLocation() - CameraLocation).Rotation());
+			const FVector Forward = CameraRotation.Vector();
+			SpawnTourBullet(CameraLocation + Forward * 700.f, -Forward);
 		}
 	});
 	Add(TEXT("detener_mira_clic"), 1.f, [this]
 	{
+		if (const APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0); PC && TourTemps.Num() > 0 && TourTemps.Last().IsValid())
+		{
+			FVector CameraLocation;
+			FRotator CameraRotation;
+			PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
+			const FVector ToBullet = TourTemps.Last()->GetActorLocation() - CameraLocation;
+			const APawn* Pawn = PC->GetPawn();
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR detener_mira_diag dist_jugador=%.0f angulo=%.1f ritmo=%.2f"),
+				Pawn ? FVector::Dist(Pawn->GetActorLocation(), TourTemps.Last()->GetActorLocation()) : -1.f,
+				FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(ToBullet.GetSafeNormal(), CameraRotation.Vector()))),
+				TourTemps.Last()->CustomTimeDilation);
+		}
 		OnPrimaryPressed();
 		AActor* Bullet = TourTemps.Num() > 0 ? TourTemps.Last().Get() : nullptr;
 		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
