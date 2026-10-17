@@ -134,6 +134,7 @@ void ATemporalSandbox::Setup()
 				EnergyHUD->SetEnergy(PlayerEnergy);
 				EnergyHUD->SetAim(PlayerAim);
 				EnergyHUD->SetHealth(PlayerHealth);
+				EnergyHUD->SetDash(PlayerDash);
 				EnergyHUD->AddToViewport();
 			}
 		}
@@ -781,6 +782,38 @@ void ATemporalSandbox::StartTour()
 			PlayerHealth ? PlayerHealth->Health : -1.f, PlayerHealth && PlayerHealth->IsDead() ? 1 : 0,
 			Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
 	});
+	// Fase 3 · Esquiva perfecta: una bala a 4 m viene hacia ti y haces dash → tiempo de reflejo, sin daño.
+	Add(TEXT("esquiva_perfecta"), 2.f, [this, Player]
+	{
+		ACharacter* Character = Player();
+		if (!Character)
+		{
+			return;
+		}
+		const FVector Forward = Character->GetActorForwardVector();
+		const FVector From = Character->GetActorLocation() + Forward * 400.f + FVector(0.f, 0.f, 20.f);
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (ATemporalProjectile* Bullet = GetWorld()->SpawnActor<ATemporalProjectile>(ATemporalProjectile::StaticClass(), From, FRotator::ZeroRotator, Params))
+		{
+			Bullet->Speed = 1800.f;
+			Bullet->bHurtsPlayer = true;
+			Bullet->Launch(From, -Forward, nullptr);
+			TourTemp = Bullet;
+		}
+		const float Before = PlayerHealth ? PlayerHealth->Health : -1.f;
+		const bool bDash = PlayerDash && PlayerDash->TryDash();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR esquiva dash=%d reflex=%d vida=%.0f"), bDash ? 1 : 0, PlayerDash && PlayerDash->IsReflexActive() ? 1 : 0, Before);
+	});
+	Add(TEXT("despues_del_reflejo"), 1.f, [this]
+	{
+		if (TourTemp.IsValid())
+		{
+			TourTemp->Destroy();
+		}
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR despues_del_reflejo vida=%.0f global=%.2f"), PlayerHealth ? PlayerHealth->Health : -1.f, Dilation ? Dilation->GetGlobalDilation() : -1.f);
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		GoToRoom(1);
@@ -1089,6 +1122,26 @@ void ATemporalSandbox::BuildChaosSteps()
 		if (PlayerInverseStep) { PlayerInverseStep->EndInverseStep(); }
 		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
 		OnDash();
+	});
+	// Fase 3 · Todos los tiempos lentos encimados y luego soltar todo: el mundo y el jugador deben volver a 1.
+	Add(TEXT("todo_lento_junto"), 1.5f, [this]
+	{
+		if (PlayerEnergy) { PlayerEnergy->Energy = PlayerEnergy->MaxEnergy; }
+		if (PlayerOverdrive) { PlayerOverdrive->StartOverdrive(); }
+		if (PlayerDash) { PlayerDash->StartReflex(); }
+		OnBubble();
+		for (int32 i = 0; i < 3; ++i) { OnFire(); }
+	});
+	Add(TEXT("todo_lento_suelta"), 2.f, [this]
+	{
+		if (PlayerOverdrive) { PlayerOverdrive->StopOverdrive(); }
+	});
+	Add(TEXT("todo_lento_revisa"), 0.5f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR todo_lento global=%.2f jugador=%.2f"),
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Pawn ? Pawn->CustomTimeDilation : -1.f);
 	});
 	// Fase 3 · Morir a media acción: F, R, Sobremarcha, apuntar y dash a la vez.
 	Add(TEXT("sala5_caos"), 1.f, [this] { OnRoom5(); });

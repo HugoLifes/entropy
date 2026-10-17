@@ -221,6 +221,9 @@ private:
 	UPROPERTY()
 	TObjectPtr<ATemporalReflexRoom> ReflexRoom;
 
+	/** Algo que creó un paso del tour y hay que borrar en el siguiente. */
+	TWeakObjectPtr<AActor> TourTemp;
+
 	FVector PlayerStartLocation = FVector::ZeroVector;
 
 	TArray<FEntropiaTourStep> TourSteps;

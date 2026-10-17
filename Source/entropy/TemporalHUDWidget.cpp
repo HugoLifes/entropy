@@ -5,6 +5,7 @@
 #include "TemporalAimComponent.h"
 #include "TemporalDilation.h"
 #include "TemporalHealthComponent.h"
+#include "TemporalDashComponent.h"
 
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -38,6 +39,18 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 	LayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 
 	PaintCrosshair(AllottedGeometry, OutDrawElements, LayerId + 3);
+
+	// Tiempo de reflejo: aviso arriba al centro mientras dura.
+	if (const UTemporalDashComponent* DashComp = Dash.Get(); DashComp && DashComp->IsReflexActive())
+	{
+		const FSlateFontInfo BigFont = FCoreStyle::GetDefaultFontStyle("Bold", 18);
+		const FVector2D TextSize(320.f, 30.f);
+		const FVector2D TextPos((AllottedGeometry.GetLocalSize().X - 220.f) * 0.5f, 90.f);
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 3,
+			AllottedGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPos)),
+			FString(TEXT("TIEMPO DE REFLEJO")), BigFont, ESlateDrawEffect::None,
+			FLinearColor(1.f, 0.85f, 0.6f, 0.4f + 0.6f * DashComp->GetReflexAlpha()));
+	}
 
 	const UTemporalEnergyComponent* EnergyComp = Energy.Get();
 	if (!EnergyComp)

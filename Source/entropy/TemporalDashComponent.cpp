@@ -5,11 +5,17 @@
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalHealthComponent.h"
+#include "TemporalCombat.h"
+#include "TemporalDilation.h"
+#include "TemporalProjectile.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/PostProcessComponent.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -31,6 +37,20 @@ void UTemporalDashComponent::BeginPlay()
 	Trail = TemporalFX::FindOrAddComponent<UTemporalTrailComponent>(GetOwner(), TEXT("TemporalTrail"));
 	DashMontage = LoadObject<UAnimMontage>(nullptr, EntropiaDash::MontagePath);
 
+	// Tiempo de reflejo: imagen un poco desaturada y cálida con viñeta (distinta de la Sobremarcha y del Paso Inverso).
+	ReflexPostProcess = NewObject<UPostProcessComponent>(GetOwner(), TEXT("ReflexPostProcess"));
+	ReflexPostProcess->bUnbound = true;
+	ReflexPostProcess->Priority = 3.f;
+	ReflexPostProcess->BlendWeight = 0.f;
+	FPostProcessSettings& PP = ReflexPostProcess->Settings;
+	PP.bOverride_ColorSaturation = true;
+	PP.ColorSaturation = FVector4(0.55f, 0.55f, 0.55f, 1.f);
+	PP.bOverride_ColorGain = true;
+	PP.ColorGain = FVector4(1.08f, 1.f, 0.9f, 1.f);
+	PP.bOverride_VignetteIntensity = true;
+	PP.VignetteIntensity = 0.8f;
+	ReflexPostProcess->RegisterComponent();
+
 	// El movimiento del personaje corre DESPUÉS de este componente: así la velocidad del dash se usa en el mismo frame.
 	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
 	{
@@ -44,6 +64,7 @@ void UTemporalDashComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		EndDash();
 	}
+	EndReflex();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -98,9 +119,16 @@ bool UTemporalDashComponent::TryDash()
 	Move->GravityScale = 0.f;
 	Move->Velocity = DashDirection * DashSpeed;
 
+	// Esquiva perfecta: se mide ANTES de moverte (¿la bala te iba a pegar donde estabas?).
+	const bool bPerfect = IsPerfectDodge();
+
 	if (UTemporalHealthComponent* Health = Character->FindComponentByClass<UTemporalHealthComponent>())
 	{
 		Health->SetInvulnerable(InvulnerableSeconds);
+	}
+	if (bPerfect)
+	{
+		StartReflex();
 	}
 
 	bDashing = true;
@@ -123,6 +151,61 @@ bool UTemporalDashComponent::TryDash()
 		FX->Pulse(Character->GetActorLocation(), 0.02f, 0.35f, 0.18f);
 	}
 	return true;
+}
+
+bool UTemporalDashComponent::IsPerfectDodge() const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	if (!Capsule || DodgeWindow <= 0.f)
+	{
+		return false;
+	}
+	for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+	{
+		if (!It->bHurtsPlayer)
+		{
+			continue;
+		}
+		const float Seconds = TemporalCombat::TimeToHitCapsule(It->GetActorLocation(), It->GetRealVelocity(),
+			Capsule->GetComponentLocation(), Capsule->GetScaledCapsuleHalfHeight(), Capsule->GetScaledCapsuleRadius(), DodgeWindow);
+		if (Seconds >= 0.f)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UTemporalDashComponent::StartReflex()
+{
+	ReflexTimer = ReflexSeconds;
+	if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
+	{
+		Dilation->RequestGlobal(this, ReflexDilation);
+	}
+	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	{
+		FX->Pulse(GetOwner()->GetActorLocation(), 0.05f, 0.9f, 0.9f);
+	}
+	TemporalFX::Burst(this, GetOwner()->GetActorLocation(), FLinearColor(1.f, 0.85f, 0.6f), 0.8f);
+}
+
+void UTemporalDashComponent::EndReflex()
+{
+	const bool bWasActive = ReflexTimer > 0.f;
+	ReflexTimer = 0.f;
+	if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
+	{
+		Dilation->ReleaseGlobal(this);
+	}
+	if (bWasActive && GetOwner())
+	{
+		if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+		{
+			FX->Pulse(GetOwner()->GetActorLocation(), -0.02f, 0.4f, 0.3f);
+		}
+	}
 }
 
 void UTemporalDashComponent::EndDash()
@@ -176,6 +259,20 @@ void UTemporalDashComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	// Tiempo real: en los tiempos lentos globales el jugador va a velocidad normal, y el dash también.
 	const float RealDelta = TemporalFX::RealDelta();
 	SinceLastDash += RealDelta;
+
+	if (ReflexTimer > 0.f)
+	{
+		ReflexTimer -= RealDelta;
+		if (ReflexTimer <= 0.f)
+		{
+			EndReflex();
+		}
+	}
+	ReflexBlend = FMath::FInterpTo(ReflexBlend, ReflexTimer > 0.f ? 1.f : 0.f, RealDelta, ReflexTimer > 0.f ? 14.f : 5.f);
+	if (ReflexPostProcess)
+	{
+		ReflexPostProcess->BlendWeight = ReflexBlend;
+	}
 	if (!bDashing && !Move->IsFalling())
 	{
 		bAirDashUsed = false;
