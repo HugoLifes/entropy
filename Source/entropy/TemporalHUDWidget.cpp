@@ -2,6 +2,8 @@
 
 #include "TemporalHUDWidget.h"
 #include "TemporalEnergyComponent.h"
+#include "TemporalAimComponent.h"
+#include "TemporalDilation.h"
 
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -17,6 +19,7 @@ namespace EntropiaHUD
 		if (Power == TEXT("Inverso")) { return FLinearColor(0.3f, 0.6f, 1.f); }
 		if (Power == TEXT("Inversion")) { return FLinearColor(1.f, 0.65f, 0.15f); }
 		if (Power == TEXT("Sobremarcha")) { return FLinearColor(0.2f, 0.9f, 0.8f); }
+		if (Power == TEXT("Detener")) { return FLinearColor(0.6f, 0.92f, 1.f); }
 		return FLinearColor(0.9f, 0.9f, 0.9f);
 	}
 }
@@ -33,10 +36,12 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 {
 	LayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 
+	PaintCrosshair(AllottedGeometry, OutDrawElements, LayerId + 3);
+
 	const UTemporalEnergyComponent* EnergyComp = Energy.Get();
 	if (!EnergyComp)
 	{
-		return LayerId;
+		return LayerId + 3;
 	}
 
 	using namespace EntropiaHUD;
@@ -65,5 +70,46 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 		AllottedGeometry.ToPaintGeometry(FVector2D(BarWidth, 16.f), FSlateLayoutTransform(BarPos - FVector2D(0.f, 18.f))),
 		FString(TEXT("ENERGÍA")), Font, ESlateDrawEffect::None, FLinearColor(1.f, 1.f, 1.f, 0.85f));
 
-	return LayerId + 2;
+	return LayerId + 3;
+}
+
+void UTemporalHUDWidget::PaintCrosshair(const FGeometry& Geometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
+{
+	const UTemporalAimComponent* AimComp = Aim.Get();
+	if (!AimComp)
+	{
+		return;
+	}
+
+	// Color según lo que hay en la mira.
+	FLinearColor Color(1.f, 1.f, 1.f, 0.75f);
+	if (const AActor* Target = AimComp->GetHoveredTarget())
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		Color = (Dilation && Dilation->IsFrozen(Target)) ? FLinearColor(0.55f, 0.95f, 1.f, 1.f) : FLinearColor(1.f, 0.65f, 0.15f, 1.f);
+	}
+
+	// Cuatro rayitas alrededor de un punto; al apuntar se cierran (más precisión).
+	const float Alpha = AimComp->GetAimAlpha();
+	const float TickGap = FMath::Lerp(10.f, 6.f, Alpha);
+	const float TickLength = FMath::Lerp(8.f, 10.f, Alpha);
+	const float TickThick = 2.f;
+	const FVector2D Center = Geometry.GetLocalSize() * 0.5f;
+	const FSlateBrush* White = FCoreStyle::Get().GetBrush("WhiteBrush");
+	auto Box = [&](const FVector2D& TopLeft, const FVector2D& Size, const FLinearColor& BoxColor)
+	{
+		FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(TopLeft)), White, ESlateDrawEffect::None, BoxColor);
+	};
+	const FLinearColor Shadow(0.f, 0.f, 0.f, 0.45f * Color.A);
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		// Primero una sombra 1 px más grande (se ve sobre fondos claros), luego el color.
+		const float Pad = Pass == 0 ? 1.f : 0.f;
+		const FLinearColor& C = Pass == 0 ? Shadow : Color;
+		Box(Center + FVector2D(-TickThick * 0.5f - Pad, -TickGap - TickLength - Pad), FVector2D(TickThick + Pad * 2.f, TickLength + Pad * 2.f), C);
+		Box(Center + FVector2D(-TickThick * 0.5f - Pad, TickGap - Pad), FVector2D(TickThick + Pad * 2.f, TickLength + Pad * 2.f), C);
+		Box(Center + FVector2D(-TickGap - TickLength - Pad, -TickThick * 0.5f - Pad), FVector2D(TickLength + Pad * 2.f, TickThick + Pad * 2.f), C);
+		Box(Center + FVector2D(TickGap - Pad, -TickThick * 0.5f - Pad), FVector2D(TickLength + Pad * 2.f, TickThick + Pad * 2.f), C);
+		Box(Center - FVector2D(1.f + Pad, 1.f + Pad), FVector2D(2.f + Pad * 2.f, 2.f + Pad * 2.f), C);
+	}
 }

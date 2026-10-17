@@ -8,6 +8,7 @@
 #include "TemporalHUDWidget.h"
 #include "ObjectInversionComponent.h"
 #include "OverdriveComponent.h"
+#include "TemporalAimComponent.h"
 #include "InverseStepComponent.h"
 #include "EchoGhost.h"
 #include "TimeBubble.h"
@@ -79,6 +80,8 @@ void ATemporalSandbox::Setup()
 			InputComponent->BindKey(EKeys::X, IE_Pressed, this, &ATemporalSandbox::OnFireInverted);
 			InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ATemporalSandbox::OnBreakInFront);
 			InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ATemporalSandbox::OnOverdrive);
+			InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &ATemporalSandbox::OnAimPressed);
+			InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &ATemporalSandbox::OnAimReleased);
 		}
 	}
 
@@ -105,6 +108,8 @@ void ATemporalSandbox::Setup()
 			PlayerInverseStep->RegisterComponent();
 		}
 
+		// La mira va antes que los poderes que la usan (Invertir, Detener).
+		PlayerAim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("PlayerAim"));
 		PlayerInversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		PlayerOverdrive = TemporalFX::FindOrAddComponent<UOverdriveComponent>(Pawn, TEXT("PlayerOverdrive"));
 
@@ -115,6 +120,7 @@ void ATemporalSandbox::Setup()
 			if (EnergyHUD)
 			{
 				EnergyHUD->SetEnergy(PlayerEnergy);
+				EnergyHUD->SetAim(PlayerAim);
 				EnergyHUD->AddToViewport();
 			}
 		}
@@ -311,7 +317,7 @@ void ATemporalSandbox::ShowHelp()
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Shift+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 0: volver a las cajas"));
 	}
@@ -335,9 +341,10 @@ void ATemporalSandbox::OnInverseReleased()
 
 void ATemporalSandbox::OnRewindPressed()
 {
-	// Shift+R = rebobinar TODO (para pruebas, sin costo). R sola = Invertir objeto: solo lo que apuntas.
+	// Ctrl+R = rebobinar TODO (para pruebas, sin costo). R sola = Invertir objeto: solo lo que apuntas.
+	// (Antes era Shift+R; Shift ahora es el dash.)
 	const APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-	bRewindingAll = PC && (PC->IsInputKeyDown(EKeys::LeftShift) || PC->IsInputKeyDown(EKeys::RightShift));
+	bRewindingAll = PC && (PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::RightControl));
 	if (!bRewindingAll)
 	{
 		if (PlayerInversion)
@@ -382,6 +389,22 @@ void ATemporalSandbox::OnOverdrive()
 	if (PlayerOverdrive)
 	{
 		PlayerOverdrive->Toggle();
+	}
+}
+
+void ATemporalSandbox::OnAimPressed()
+{
+	if (PlayerAim)
+	{
+		PlayerAim->SetAiming(true);
+	}
+}
+
+void ATemporalSandbox::OnAimReleased()
+{
+	if (PlayerAim)
+	{
+		PlayerAim->SetAiming(false);
 	}
 }
 
@@ -561,7 +584,29 @@ void ATemporalSandbox::StartTour()
 
 	Add(TEXT("inicio"), 2.5f, [] {});
 	Add(TEXT("sala4"), 2.f, [this] { OnRoom4(); });
-	Add(TEXT("disparo"), 0.9f, [this] { OnFire(); });
+	// Fase 3: apuntar a la caja de la línea de tiro (cámara al hombro, la mira se pone ámbar y la caja se resalta).
+	Add(TEXT("apuntar"), 1.6f, [this, Player]
+	{
+		ACharacter* Character = Player();
+		AController* Controller = Character ? Character->GetController() : nullptr;
+		if (PhysicsLab && Controller)
+		{
+			const FVector Crate = PhysicsLab->GetActorTransform().TransformPosition(FVector(800.f, 0.f, 50.f));
+			Controller->SetControlRotation((Crate - Character->GetActorLocation() - FVector(0.f, 0.f, 60.f)).Rotation());
+		}
+		if (PlayerAim)
+		{
+			PlayerAim->SetAiming(true);
+		}
+	});
+	Add(TEXT("disparo"), 0.9f, [this]
+	{
+		if (PlayerAim)
+		{
+			PlayerAim->SetAiming(false);
+		}
+		OnFire();
+	});
 	Add(TEXT("escombros"), 1.4f, [] {});
 	Add(TEXT("invertir_bala"), 2.6f, [this, NewestBullet]
 	{
@@ -780,6 +825,17 @@ void ATemporalSandbox::BuildChaosSteps()
 	{
 		if (PlayerInversion) { PlayerInversion->EndInversion(); }
 		LookAt(-15.f);
+	});
+	// Fase 3: apuntar y soltar muchas veces, e invertir mientras apuntas (la cámara y el giro deben quedar bien).
+	Add(TEXT("apuntar_x11_y_r"), 1.f, [this]
+	{
+		for (int32 i = 0; i < 11; ++i) { if (PlayerAim) { PlayerAim->SetAiming(!PlayerAim->IsAiming()); } }
+		if (PlayerInversion) { PlayerInversion->BeginInversion(); }
+	});
+	Add(TEXT("suelta_apuntar"), 0.6f, [this]
+	{
+		if (PlayerInversion) { PlayerInversion->EndInversion(); }
+		if (PlayerAim) { PlayerAim->SetAiming(false); }
 	});
 	Add(TEXT("shiftr_y_romper"), 2.f, [this, BreakAll] { TourRewindAll(true); BreakAll(); OnFire(); });
 	Add(TEXT("shiftr_suelta"), 0.8f, [this] { TourRewindAll(false); });

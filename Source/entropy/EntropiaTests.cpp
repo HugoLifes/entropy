@@ -6,7 +6,7 @@
 #include "Misc/AutomationTest.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalRecorderComponent.h"
-#include "ObjectInversionComponent.h"
+#include "TemporalAimComponent.h"
 #include "TemporalFX.h"
 #include "Misc/App.h"
 #include "TemporalFracture.h"
@@ -121,12 +121,12 @@ bool FEntropiaAimPrefersCrosshair::RunTest(const FString& Parameters)
 	// Plataforma de 3 m bajo el personaje: su esfera cubre la mira (borde -9°) pero su centro está a 30°.
 	// Bala a 10 m justo en la mira: borde -1°, centro 0.5°. Debe ganar la bala.
 	TestTrue(TEXT("La bala en la mira le gana a la plataforma grande cercana"),
-		UObjectInversionComponent::IsBetterAim(-1.f, 0.5f, -9.f, 30.f));
+		UTemporalAimComponent::IsBetterAim(-1.f, 0.5f, -9.f, 30.f));
 	TestFalse(TEXT("Y no al revés"),
-		UObjectInversionComponent::IsBetterAim(-9.f, 30.f, -1.f, 0.5f));
+		UTemporalAimComponent::IsBetterAim(-9.f, 30.f, -1.f, 0.5f));
 	// Si ninguno cubre la mira, gana el borde más cercano.
 	TestTrue(TEXT("Fuera de la mira gana el borde más cercano"),
-		UObjectInversionComponent::IsBetterAim(1.f, 3.f, 2.5f, 2.6f));
+		UTemporalAimComponent::IsBetterAim(1.f, 3.f, 2.5f, 2.6f));
 	return true;
 }
 
