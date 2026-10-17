@@ -70,7 +70,7 @@ public:
 	void CreateEcho();
 	/** G: borra los ecos. */
 	void ClearEchoes();
-	/** Q: apuntando a algo = Detenerlo (Fase 4); si no: nivel 1 = burbuja frente a ti, nivel 2 = detener todo el mundo (The World). */
+	/** Q: nivel 1 = apuntando a algo lo Detiene (Fase 4), si no, burbuja frente a ti; nivel 2 = detener todo el mundo (The World). */
 	void SpawnBubble();
 
 	/** N (prueba): cambia el nivel de Detener el tiempo entre 1 y 2. Hasta que haya progresión (remaches). */

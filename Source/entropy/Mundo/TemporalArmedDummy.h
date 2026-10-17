@@ -51,8 +51,12 @@ class ENTROPY_API ATemporalArmedDummy : public ATemporalMannequin
 public:
 	ATemporalArmedDummy();
 
+	/** La pistola (el cuerpo del modelo de DA_Armas.DummyPistol, o un cubo si falta). Sus otras piezas cuelgan de ella. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entropia")
 	TObjectPtr<UStaticMeshComponent> Gun;
+
+	/** ¿Usa el modelo de DA_Armas (true) o el cubo provisional? */
+	bool HasGunModel() const { return bGunModel; }
 
 	/** Hacia dónde sale al asomarse (en el mundo; lo pone la sala al crearlo). */
 	FVector PeekOffset = FVector(0.f, 150.f, 0.f);
@@ -85,6 +89,16 @@ protected:
 private:
 	void RestartRoutine();
 	void PlaceGun(bool bAiming);
+	/** Pone el modelo de DA_Armas.DummyPistol en la pistola (si está importado). */
+	void SetupGunModel();
+	/** Punta del cañón en el mundo. */
+	FVector MuzzleLocation() const;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> GunExtraParts;
+	/** Giro del modelo dentro de la pistola (el cubo apunta a +X; el modelo, a -Y). */
+	FQuat GunModelRotation = FQuat::Identity;
+	bool bGunModel = false;
 
 	FArmedDummyRoutine Routine;
 	FVector CoverHome = FVector::ZeroVector;

@@ -901,5 +901,40 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(-1); }
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
+	// Fase 4 · Lluvia detenida y morir antes de que vuelva el tiempo: todo vuelve a la normalidad y las balas no te pegan.
+	Add(TEXT("lluvia_muerte_prepara"), 0.8f, [this, AimAtWall]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 0) { Powers->Weapons->CycleWeapon(1); }
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		AimAtWall();
+	});
+	Add(TEXT("lluvia_muerte_mundo"), 0.3f, [this] { Powers->SpawnBubble(); });
+	for (int32 Shot = 0; Shot < 3; ++Shot)
+	{
+		Add(TEXT("lluvia_muerte_disparo"), 0.5f, [this]
+		{
+			Powers->PrimaryAction();
+			Powers->PrimaryReleased();
+		});
+	}
+	Add(TEXT("lluvia_muere"), 0.6f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_antes_de_morir mundo=%d vivas=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Powers->Weapons ? Powers->Weapons->NumLiveBullets() : -1);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("lluvia_muerte_revisa"), 1.f, [this]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_y_muerte mundo=%d global=%.2f stencil=%d vida_llena=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Character ? Character->GetMesh()->CustomDepthStencilValue : -1,
+			Powers->Health && Powers->Health->GetFraction() >= 1.f ? 1 : 0);
+		Powers->CycleTimeStopLevel();
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

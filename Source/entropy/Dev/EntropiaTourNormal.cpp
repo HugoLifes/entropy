@@ -1179,6 +1179,72 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ultimo_en_caer tumbado=%d camara_lenta=%d global=%.2f"), WeaponDummy(2) && WeaponDummy(2)->IsKnockedDown() ? 1 : 0,
 			Powers->Weapons && Powers->Weapons->IsKillCamActive() ? 1 : 0, Dilation ? Dilation->GetGlobalDilation() : -1.f);
 	});
+	// Fase 4 · Lluvia detenida: con el mundo detenido (N + Q) tus balas salen 1.5 m y se quedan flotando; al volver el
+	// tiempo salen todas juntas. Y la pistola de los dummies ya es un modelo (no el cubo).
+	auto RainBullets = [this]()
+	{
+		// Balas tuyas flotando entre 1 y 3 m del cañón.
+		int32 Floating = 0;
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		const FVector Muzzle = W ? W->GetMuzzleLocation() : FVector::ZeroVector;
+		for (const TWeakObjectPtr<ATemporalProjectile>& Live : W ? W->GetLiveBullets() : TArray<TWeakObjectPtr<ATemporalProjectile>>())
+		{
+			const float Dist = Live.IsValid() ? FVector::Dist(Live->GetActorLocation(), Muzzle) : -1.f;
+			Floating += Dist >= 100.f && Dist <= 300.f ? 1 : 0;
+		}
+		return Floating;
+	};
+	Add(TEXT("lluvia_prepara"), 0.8f, [this, BesideDummy]
+	{
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { It->Destroy(); }
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 0) { Powers->Weapons->CycleWeapon(1); }
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		BesideDummy(0);
+	});
+	Add(TEXT("lluvia_apunta"), 1.7f, [this, HeadOf] { LookAtPoint(HeadOf(0)); });
+	Add(TEXT("lluvia_apunta2"), 0.3f, [this, HeadOf] { LookAtPoint(HeadOf(0)); });
+	Add(TEXT("lluvia_mundo"), 0.3f, [this]
+	{
+		// Apuntando al dummy y con el nivel 2: Q detiene el MUNDO (no solo a él).
+		Powers->SpawnBubble();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_mundo activo=%d detenidos=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Powers->TimeStop ? Powers->TimeStop->NumStopped() : -1);
+	});
+	for (int32 Shot = 0; Shot < 6; ++Shot)
+	{
+		Add(TEXT("lluvia_disparo"), 0.5f, [this]
+		{
+			Powers->PrimaryAction();
+			Powers->PrimaryReleased();
+		});
+	}
+	Add(TEXT("lluvia_flotando"), 0.1f, [this, RainBullets, WeaponDummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_detenida flotando=%d balas=%d mundo=%d tumbado=%d"), RainBullets(),
+			Powers->Weapons ? Powers->Weapons->CurrentState().Ammo : -1, Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			WeaponDummy(0) && WeaponDummy(0)->IsKnockedDown() ? 1 : 0);
+	});
+	Add(TEXT("lluvia_suelta"), 1.6f, [] {});
+	Add(TEXT("lluvia_revisa"), 0.3f, [this, WeaponDummy]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_suelta mundo=%d global=%.2f tumbado=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, WeaponDummy(0) && WeaponDummy(0)->IsKnockedDown() ? 1 : 0);
+		Powers->CycleTimeStopLevel();
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+	});
+	Add(TEXT("dummy_pistola"), 0.6f, [this, WeaponDummy]
+	{
+		const ATemporalArmedDummy* Target = WeaponDummy(0);
+		const UStaticMesh* Expected = UEntropiaWeaponSet::Get()->DummyPistol.Parts.Num() > 0 ? UEntropiaWeaponSet::Get()->DummyPistol.Parts[0].Mesh.LoadSynchronous() : nullptr;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR dummy_pistola malla_pistola=%d hay_modelo=%d"), Target && Expected && Target->Gun->GetStaticMesh() == Expected ? 1 : 0, Expected ? 1 : 0);
+		if (Target) { LookAtPoint(Target->GetActorLocation()); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+	});
 	Add(TEXT("q_detener_prepara"), 0.6f, [this, BesideDummy]
 	{
 		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);

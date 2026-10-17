@@ -5,6 +5,7 @@
 #include "TemporalDilation.h"
 #include "TemporalFX.h"
 #include "TemporalProjectile.h"
+#include "EntropiaWeaponSet.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -114,7 +115,53 @@ void ATemporalArmedDummy::BeginPlay()
 	CoverHome = GetActorLocation();
 	RestartRoutine();
 	TemporalFX::ApplyToAllSlots(Gun, TemporalFX::MakeSolid(this, FLinearColor(0.05f, 0.05f, 0.06f)));
+	SetupGunModel();
 	PlaceGun(false);
+}
+
+void ATemporalArmedDummy::SetupGunModel()
+{
+	const FEntropiaWeaponStats& Pistol = UEntropiaWeaponSet::Get()->DummyPistol;
+	UStaticMesh* Body = Pistol.Parts.Num() > 0 ? Pistol.Parts[0].Mesh.LoadSynchronous() : nullptr;
+	if (!Body)
+	{
+		// Sin el modelo de Fab (otra compu): se queda el cubo.
+		return;
+	}
+	bGunModel = true;
+	Gun->SetStaticMesh(Body);
+	// El pack low poly apunta a -Y y es unas 6 veces más grande: girado 90° y al tamaño del set.
+	Gun->SetRelativeScale3D(Pistol.Parts[0].Offset.GetScale3D());
+	GunModelRotation = FRotator(0.f, 90.f, 0.f).Quaternion();
+	const FLinearColor Tint = Pistol.Tint.A > 0.f ? Pistol.Tint : FLinearColor(0.07f, 0.07f, 0.08f);
+	TemporalFX::ApplyToAllSlots(Gun, TemporalFX::MakeSolid(this, Tint));
+	for (int32 i = 1; i < Pistol.Parts.Num(); ++i)
+	{
+		UStaticMesh* PartMesh = Pistol.Parts[i].Mesh.LoadSynchronous();
+		if (!PartMesh)
+		{
+			continue;
+		}
+		// Las demás piezas comparten el espacio del modelo: van pegadas a la pistola sin moverse.
+		UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(this);
+		Part->SetupAttachment(Gun);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetGenerateOverlapEvents(false);
+		Part->SetStaticMesh(PartMesh);
+		Part->RegisterComponent();
+		TemporalFX::ApplyToAllSlots(Part, TemporalFX::MakeSolid(this, Tint));
+		GunExtraParts.Add(Part);
+	}
+}
+
+FVector ATemporalArmedDummy::MuzzleLocation() const
+{
+	// El cubo apunta a su +X; el modelo, a su -Y (y su cañón queda arriba de la empuñadura).
+	if (bGunModel)
+	{
+		return Gun->GetComponentTransform().TransformPosition(FVector(0.f, -80.f, 20.f));
+	}
+	return Gun->GetComponentLocation() + Gun->GetForwardVector() * 18.f;
 }
 
 void ATemporalArmedDummy::PlaceGun(bool bAiming)
@@ -124,8 +171,8 @@ void ATemporalArmedDummy::PlaceGun(bool bAiming)
 		return;
 	}
 	// Apuntando: frente al pecho, a la altura de los ojos. Cubierto: abajo, junto a la cadera.
-	Gun->SetRelativeLocationAndRotation(bAiming ? FVector(55.f, 12.f, 48.f) : FVector(22.f, 22.f, -8.f),
-		bAiming ? FRotator::ZeroRotator : FRotator(-60.f, 0.f, 0.f));
+	const FQuat Base = (bAiming ? FRotator::ZeroRotator : FRotator(-60.f, 0.f, 0.f)).Quaternion();
+	Gun->SetRelativeLocationAndRotation(bAiming ? FVector(55.f, 12.f, 48.f) : FVector(22.f, 22.f, -8.f), Base * GunModelRotation);
 }
 
 void ATemporalArmedDummy::FireAtPlayer()
@@ -135,7 +182,7 @@ void ATemporalArmedDummy::FireAtPlayer()
 	{
 		return;
 	}
-	const FVector Muzzle = Gun->GetComponentLocation() + Gun->GetForwardVector() * 18.f;
+	const FVector Muzzle = MuzzleLocation();
 	const FVector Target = Player->GetActorLocation() + FVector(0.f, 0.f, 20.f);
 	// Solo si te ve (las paredes y columnas te protegen).
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArmedDummySight), false, this);

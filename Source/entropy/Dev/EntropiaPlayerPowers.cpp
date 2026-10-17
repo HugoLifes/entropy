@@ -192,8 +192,9 @@ void UEntropiaPlayerPowers::ClearEchoes()
 
 void UEntropiaPlayerPowers::SpawnBubble()
 {
-	// Fase 4: el clic apuntando ahora dispara, así que Detener vive en Q apuntando a algo.
-	if (Aim && Aim->IsAiming() && TimeStop && Aim->FindTarget())
+	// Fase 4: el clic apuntando ahora dispara, así que Detener vive en Q apuntando a algo (nivel 1). En nivel 2, Q siempre
+	// detiene el mundo entero, aunque apuntes a alguien (así se hace la lluvia detenida).
+	if (TimeStopLevel < 2 && Aim && Aim->IsAiming() && TimeStop && Aim->FindTarget())
 	{
 		TimeStop->StopAimed();
 		return;
