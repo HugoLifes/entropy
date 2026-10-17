@@ -40,6 +40,24 @@ struct ENTROPY_API FEntropiaWeaponState
 	float SpreadDegrees(const FEntropiaWeaponStats& Stats, bool bMoving) const;
 };
 
+/** Tiros que recibió un maniquí congelado: salen todos juntos cuando su tiempo vuelve. */
+struct ENTROPY_API FEntropiaStoredShots
+{
+	void Add(const FVector& Direction, float Damage, float Impulse);
+	void Clear();
+	int32 Num() const { return Count; }
+	float TotalDamage() const { return Damage; }
+	float TotalImpulse() const { return Impulse; }
+	/** Hacia dónde empujan, en promedio (normalizado). */
+	FVector AverageDirection() const;
+
+private:
+	FVector DirectionSum = FVector::ZeroVector;
+	float Damage = 0.f;
+	float Impulse = 0.f;
+	int32 Count = 0;
+};
+
 namespace EntropiaGuns
 {
 	/** Los 30 cm de arriba de la cápsula cuentan como cabeza. */

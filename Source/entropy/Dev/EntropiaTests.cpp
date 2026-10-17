@@ -892,6 +892,23 @@ bool FEntropiaGunHitZoneAndDamage::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunStoredShotsSum, "Entropia.Gun.StoredShotsSum", EntropiaTestFlags::Flags)
+bool FEntropiaGunStoredShotsSum::RunTest(const FString& Parameters)
+{
+	FEntropiaStoredShots Shots;
+	Shots.Add(FVector(1.f, 0.f, 0.f), 20.f, 450.f);
+	Shots.Add(FVector(0.f, 3.f, 0.f), 20.f, 450.f);
+	Shots.Add(FVector(1.f, 0.f, 0.f), 60.f, 450.f);
+	TestEqual(TEXT("Tres tiros guardados"), Shots.Num(), 3);
+	TestEqual(TEXT("El daño se suma"), Shots.TotalDamage(), 100.f, 0.001f);
+	TestEqual(TEXT("El empujón se suma"), Shots.TotalImpulse(), 1350.f, 0.001f);
+	TestEqual(TEXT("Dirección promedio normalizada"), static_cast<float>(Shots.AverageDirection().Size()), 1.f, 0.001f);
+	TestTrue(TEXT("Empuja sobre todo hacia +X"), Shots.AverageDirection().X > Shots.AverageDirection().Y);
+	Shots.Clear();
+	TestEqual(TEXT("Clear los borra"), Shots.Num(), 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunFreeTravelAndCap, "Entropia.Gun.FreeTravelAndCap", EntropiaTestFlags::Flags)
 bool FEntropiaGunFreeTravelAndCap::RunTest(const FString& Parameters)
 {

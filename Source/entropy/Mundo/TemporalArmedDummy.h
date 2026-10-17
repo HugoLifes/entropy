@@ -69,6 +69,9 @@ public:
 	/** Le quitas la pistola (cae al piso con física). Devuelve cuánto dura su reacción (segundos). */
 	float Disarm(const FVector& Direction);
 
+	/** Devuélvesela (Fase 4): su propia bala, rebobinada hasta su cañón, le pega a él. Lo tumba si está de pie y armado. */
+	void ReceiveReturnedBullet(const FVector& Direction);
+
 	/** Dispara una bala hacia el jugador si lo ve. */
 	void FireAtPlayer();
 

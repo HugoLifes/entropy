@@ -193,6 +193,16 @@ float ATemporalArmedDummy::Disarm(const FVector& Direction)
 	return ReactionSeconds;
 }
 
+void ATemporalArmedDummy::ReceiveReturnedBullet(const FVector& Direction)
+{
+	if (!bArmed || IsKnockedDown() || IsCollapsing())
+	{
+		return;
+	}
+	TemporalFX::Burst(this, Gun->GetComponentLocation(), FLinearColor(1.f, 0.55f, 0.1f), 0.8f);
+	ReceiveBulletHit(Direction, MaxToughness * 2.f, 900.f, nullptr);
+}
+
 void ATemporalArmedDummy::RestartRoutine()
 {
 	Routine.Reset();

@@ -10,6 +10,21 @@
 #include "GameFramework/Character.h"
 #include "TemporalMannequin.generated.h"
 
+class ATemporalProjectile;
+
+/** Qué pasó con un tiro (Fase 4). */
+enum class EEntropiaShotResult : uint8
+{
+	/** No le hizo nada (ya está tirado o cayendo): la bala sigue. */
+	Ignored,
+	/** Le bajó el aguante y lo aturdió. */
+	Hurt,
+	/** Se acabó el aguante: cae como muñeco de trapo. */
+	KnockedDown,
+	/** Está congelado: el tiro se guarda y sale cuando vuelva su tiempo. */
+	Stored
+};
+
 UCLASS(NotPlaceable)
 class ENTROPY_API ATemporalMannequin : public ACharacter
 {
@@ -60,6 +75,20 @@ public:
 	bool IsCollapsing() const { return NeckBreakTime > 0.f || bPendingNeckBreak; }
 
 	bool IsKnockedDown() const { return bKnockedDown; }
+
+	/** Fase 4 · Aguante: las balas lo bajan; a 0 cae. Se llena al recuperarse. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "1"))
+	float MaxToughness = 100.f;
+	float GetToughness() const { return Toughness; }
+
+	/** Un tiro del jugador. Bullet = la bala (se queda pegada si está congelado; puede ser nula). */
+	EEntropiaShotResult ReceiveBulletHit(const FVector& Direction, float Damage, float Impulse, ATemporalProjectile* Bullet);
+
+	/** Tiros guardados mientras está congelado (salen todos juntos al volver su tiempo). */
+	int32 NumStoredShots() const { return StoredShots.Num(); }
+
+	/** Esa bala regresó a su arma (Recarga inversa): su tiro ya no cuenta. */
+	void ForgetStoredShot(const ATemporalProjectile* Bullet);
 	bool HasPendingHit() const { return bPendingHit; }
 
 	/** De pie en su lugar, sin golpes pendientes (al reiniciar la sala). */
@@ -84,7 +113,25 @@ protected:
 	float SubduedPoseDelay = 0.f;
 	bool bPendingNeckBreak = false;
 
+	/** Baja el aguante: lo tumba (true) o lo aturde. */
+	bool ApplyShot(const FVector& Direction, float Damage, float Impulse);
+
 private:
+	/** Un tiro guardado (la bala se queda pegada a él hasta que salga). */
+	struct FPendingShot
+	{
+		TWeakObjectPtr<ATemporalProjectile> Bullet;
+		FVector Direction = FVector::ForwardVector;
+		float Damage = 0.f;
+		float Impulse = 0.f;
+	};
+
+	void ReleaseStoredShots();
+	void DiscardStoredShots();
+
+	TArray<FPendingShot> StoredShots;
+	float Toughness = 100.f;
+
 	void Recover(bool bWithEffect);
 	/** Congela o suelta el muñeco de trapo (la física del cuerpo no respeta CustomTimeDilation). */
 	void SetRagdollFrozen(bool bFrozen);

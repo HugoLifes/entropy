@@ -785,5 +785,45 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		LogWorld(TEXT("mundo_tras_teletransporte"));
 		Powers->CycleTimeStopLevel();
 	});
+	// Fase 4 · Tiros guardados en un congelado y la sala se reinicia: se descartan (ni se pierden después ni salen dos veces).
+	Add(TEXT("tiros_guardados_prepara"), 1.f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("tiros_guardados"), 0.4f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		if (!Target)
+		{
+			return;
+		}
+		if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+		const FVector Aim = Target->GetActorLocation();
+		for (int32 i = 0; i < 2; ++i)
+		{
+			SpawnPlayerTourBullet(Aim - Target->GetActorForwardVector() * 250.f, Target->GetActorForwardVector(), 20.f, 60.f, 450.f);
+		}
+	});
+	Add(TEXT("tiros_guardados_reinicio"), 0.4f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiros_guardados guardados=%d"), Target ? Target->NumStoredShots() : -1);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	Add(TEXT("tiros_guardados_revisa"), 0.5f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		int32 Stuck = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			Stuck += Target && It->GetAttachParentActor() == Target ? 1 : 0;
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiros_guardados_reinicio guardados=%d balas_pegadas=%d aguante=%.0f tumbado=%d"), Target ? Target->NumStoredShots() : -1,
+			Stuck, Target ? Target->GetToughness() : -1.f, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

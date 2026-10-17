@@ -97,6 +97,24 @@ ATemporalProjectile* UEntropiaTourComponent::SpawnTourBullet(const FVector& From
 	return Bullet;
 }
 
+ATemporalProjectile* UEntropiaTourComponent::SpawnPlayerTourBullet(const FVector& From, const FVector& Direction, float TorsoDamage, float HeadDamage, float Impulse)
+{
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ATemporalProjectile* Bullet = GetWorld()->SpawnActor<ATemporalProjectile>(ATemporalProjectile::StaticClass(), From, FRotator::ZeroRotator, Params);
+	if (Bullet)
+	{
+		Bullet->Speed = 8000.f;
+		Bullet->bFromPlayer = true;
+		Bullet->TorsoDamage = TorsoDamage;
+		Bullet->HeadDamage = HeadDamage;
+		Bullet->Impulse = Impulse;
+		Bullet->Launch(From, Direction, UGameplayStatics::GetPlayerPawn(this, 0));
+		TourTemps.Add(Bullet);
+	}
+	return Bullet;
+}
+
 void UEntropiaTourComponent::ClearTourTemps()
 {
 	for (const TWeakObjectPtr<AActor>& Temp : TourTemps)

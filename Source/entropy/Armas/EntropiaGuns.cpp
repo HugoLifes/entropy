@@ -75,6 +75,24 @@ float FEntropiaWeaponState::SpreadDegrees(const FEntropiaWeaponStats& Stats, boo
 	return Stats.SpreadMin + Bloom + (bMoving ? 1.f : 0.f);
 }
 
+void FEntropiaStoredShots::Add(const FVector& Direction, float InDamage, float InImpulse)
+{
+	DirectionSum += Direction.GetSafeNormal();
+	Damage += InDamage;
+	Impulse += InImpulse;
+	++Count;
+}
+
+void FEntropiaStoredShots::Clear()
+{
+	*this = FEntropiaStoredShots();
+}
+
+FVector FEntropiaStoredShots::AverageDirection() const
+{
+	return DirectionSum.GetSafeNormal();
+}
+
 namespace EntropiaGuns
 {
 	bool IsHeadshot(float ImpactZ, float CapsuleCenterZ, float HalfHeight)

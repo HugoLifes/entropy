@@ -6,6 +6,9 @@
 #include "TemporalRecorderComponent.h"
 #include "TemporalCombat.h"
 #include "TemporalHealthComponent.h"
+#include "TemporalMannequin.h"
+#include "TemporalArmedDummy.h"
+#include "EntropiaGuns.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -22,6 +25,8 @@ namespace
 {
 	const FLinearColor NormalColor(1.f, 0.55f, 0.1f);
 	const FLinearColor InvertedColor(0.2f, 0.6f, 1.f);
+	/** Las del jugador son doradas (y se ven a color en el mundo detenido). */
+	const FLinearColor PlayerColor(1.f, 0.78f, 0.25f);
 }
 
 ATemporalProjectile::ATemporalProjectile()
@@ -72,7 +77,13 @@ void ATemporalProjectile::Launch(const FVector& InMuzzle, const FVector& Directi
 	Traveled = 0.f;
 	ResetIgnored();
 	SetActorLocationAndRotation(Muzzle, Dir.Rotation());
-	Paint(NormalColor);
+	Paint(bFromPlayer ? PlayerColor : NormalColor);
+	if (bFromPlayer)
+	{
+		// Stencil 1 = lo que el mundo detenido deja a color (tú y tus balas).
+		Mesh->SetRenderCustomDepth(true);
+		Mesh->SetCustomDepthStencilValue(1);
+	}
 	State = EState::Flying;
 }
 
@@ -138,6 +149,51 @@ FVector ATemporalProjectile::GetRealVelocity() const
 	}
 }
 
+void ATemporalProjectile::Notify(EEntropiaBulletEvent Event, AActor* Victim)
+{
+	if (OnEvent)
+	{
+		OnEvent(this, Event, Victim);
+	}
+}
+
+void ATemporalProjectile::Unstick()
+{
+	if (ATemporalMannequin* Parent = Cast<ATemporalMannequin>(GetAttachParentActor()))
+	{
+		Parent->ForgetStoredShot(this);
+		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	}
+}
+
+bool ATemporalProjectile::HitMannequin(ATemporalMannequin* Victim, const FHitResult& Hit)
+{
+	const UCapsuleComponent* Capsule = Victim->GetCapsuleComponent();
+	const bool bHead = EntropiaGuns::IsHeadshot(Hit.ImpactPoint.Z, Capsule->GetComponentLocation().Z, Capsule->GetScaledCapsuleHalfHeight());
+	switch (Victim->ReceiveBulletHit(Dir, bHead ? HeadDamage : TorsoDamage, Impulse, this))
+	{
+	case EEntropiaShotResult::Stored:
+		// Congelado: la bala se queda pegada a él hasta que su tiempo vuelva.
+		SetActorLocation(Hit.ImpactPoint - Dir * 4.f);
+		AttachToActor(Victim, FAttachmentTransformRules::KeepWorldTransform);
+		State = EState::Embedded;
+		TemporalFX::Burst(this, Hit.ImpactPoint, FLinearColor(0.6f, 0.92f, 1.f), 0.25f);
+		Notify(EEntropiaBulletEvent::Stored, Victim);
+		return true;
+	case EEntropiaShotResult::Hurt:
+	case EEntropiaShotResult::KnockedDown:
+	{
+		const bool bDown = Victim->IsKnockedDown();
+		TemporalFX::Burst(this, Hit.ImpactPoint, bHead ? FLinearColor(1.f, 0.2f, 0.12f) : FLinearColor(1.f, 0.6f, 0.3f), bDown ? 0.7f : 0.4f);
+		Notify(bDown ? EEntropiaBulletEvent::KnockedDown : EEntropiaBulletEvent::Hit, Victim);
+		Destroy();
+		return true;
+	}
+	default:
+		return false;
+	}
+}
+
 bool ATemporalProjectile::HitPlayer(ACharacter* Victim, const FVector& Where)
 {
 	UTemporalHealthComponent* Health = Victim->FindComponentByClass<UTemporalHealthComponent>();
@@ -154,7 +210,10 @@ bool ATemporalProjectile::HitPlayer(ACharacter* Victim, const FVector& Where)
 void ATemporalProjectile::StepForward(float DeltaTime)
 {
 	FVector Start = GetActorLocation();
-	const float StepLength = Speed * DeltaTime;
+	// Las balas del jugador recorren sus primeros cm en tiempo real: con el mundo detenido salen del cañón y se quedan
+	// flotando un poco más allá ("lluvia detenida").
+	const float StepLength = bFromPlayer ? EntropiaGuns::StepDistance(Speed, DeltaTime, TemporalFX::RealDelta(), Traveled, EntropiaGuns::FreeTravel)
+		: Speed * DeltaTime;
 	const FVector End = Start + Dir * StepLength;
 
 	// ¿Este tramo toca al jugador? Las paredes solo se revisan hasta ahí (una pared en medio te protege).
@@ -169,8 +228,6 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 			PlayerDistance = Fraction * StepLength;
 		}
 	}
-	const FVector TraceEnd = PlayerDistance >= 0.f ? Start + Dir * PlayerDistance : End;
-
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TemporalProjectile), false, this);
 	auto Ignore = [&Params](const AActor* Actor)
 	{
@@ -185,6 +242,30 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 	{
 		Ignore(Actor.Get());
 	}
+
+	// Fase 4: las balas del jugador buscan maniquíes (su cápsula es de tipo Pawn: el trazo de visibilidad no la ve).
+	ATemporalMannequin* MannequinVictim = nullptr;
+	FHitResult MannequinHit;
+	float StopDistance = PlayerDistance >= 0.f ? PlayerDistance : StepLength;
+	if (bFromPlayer)
+	{
+		FHitResult PawnHit;
+		if (GetWorld()->LineTraceSingleByObjectType(PawnHit, Start, End, FCollisionObjectQueryParams(ECC_Pawn), Params))
+		{
+			MannequinVictim = Cast<ATemporalMannequin>(PawnHit.GetActor());
+			if (MannequinVictim && PawnHit.Distance < StopDistance)
+			{
+				MannequinHit = PawnHit;
+				StopDistance = PawnHit.Distance;
+			}
+			else
+			{
+				MannequinVictim = nullptr;
+			}
+		}
+	}
+	// Las paredes solo se revisan hasta lo primero que toque (el jugador o un maniquí): una pared en medio protege.
+	const FVector TraceEnd = Start + Dir * StopDistance;
 
 	// Pocas vueltas: cada cosa atravesada se ignora y seguimos el mismo tramo.
 	for (int32 Attempt = 0; Attempt < 4; ++Attempt)
@@ -213,7 +294,12 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 		}
 		else if (HitActor && HitActor->IsA<APawn>())
 		{
-			// Enemigos y ecos todavía no reciben daño: la bala los atraviesa.
+			// Fase 4: las balas del jugador dañan a los maniquíes; las enemigas los atraviesan.
+			ATemporalMannequin* Mannequin = bFromPlayer ? Cast<ATemporalMannequin>(HitActor) : nullptr;
+			if (Mannequin && HitMannequin(Mannequin, Hit))
+			{
+				return;
+			}
 		}
 		else
 		{
@@ -225,6 +311,15 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 		Pierced.Add(HitActor);
 		Ignore(HitActor);
 		Start = Hit.ImpactPoint;
+	}
+
+	if (MannequinVictim)
+	{
+		if (HitMannequin(MannequinVictim, MannequinHit))
+		{
+			return;
+		}
+		Pierced.Add(MannequinVictim);
 	}
 
 	if (PlayerDistance >= 0.f)
@@ -281,7 +376,18 @@ void ATemporalProjectile::Embed(const FVector& At)
 
 void ATemporalProjectile::ReturnToGun()
 {
-	TemporalFX::Burst(this, Muzzle, IsInverted() ? InvertedColor : NormalColor, 0.5f);
+	Unstick();
+	TemporalFX::Burst(this, Muzzle, IsInverted() ? InvertedColor : (bFromPlayer ? PlayerColor : NormalColor), 0.5f);
+	if (bFromPlayer)
+	{
+		// Recarga inversa: vuelve al cargador de su arma.
+		Notify(EEntropiaBulletEvent::Returned, nullptr);
+	}
+	else if (ATemporalArmedDummy* Shooter = Cast<ATemporalArmedDummy>(Gun.Get()); Shooter && !IsInverted())
+	{
+		// Devuélvesela: su propia bala, rebobinada hasta su cañón, le pega a él.
+		Shooter->ReceiveReturnedBullet(-Dir);
+	}
 	Destroy();
 }
 
@@ -293,14 +399,17 @@ void ATemporalProjectile::HandleRewindFinished()
 		return;
 	}
 
-	// Rebobinada hasta el cañón: la bala "nunca se disparó".
-	if (FVector::Dist(GetActorLocation(), Muzzle) < 80.f)
+	// Rebobinada hasta el cañón: la bala "nunca se disparó". Si se acabó la grabación, también llegó al principio
+	// (un frame lento al disparar, p. ej. una captura de pantalla, puede saltarse los primeros metros sin grabarlos).
+	if (Recorder->GetRecordedSeconds() <= 0.001f || FVector::Dist(GetActorLocation(), Muzzle) < 80.f)
 	{
+		SetActorLocation(Muzzle);
 		ReturnToGun();
 		return;
 	}
 
 	// Soltaste R a medio camino: el tiempo sigue y la bala vuelve a volar hacia adelante.
+	Unstick();
 	Traveled = FVector::Dist(GetActorLocation(), Muzzle);
 	ResetIgnored();
 	State = EState::Flying;

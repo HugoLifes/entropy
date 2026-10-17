@@ -16,6 +16,16 @@
 class UStaticMeshComponent;
 class UTemporalRecorderComponent;
 
+/** Qué le pasó a una bala del jugador (Fase 4): lo usa el arma para la marca de impacto y la Recarga inversa. */
+enum class EEntropiaBulletEvent : uint8
+{
+	Hit,
+	KnockedDown,
+	Stored,
+	/** Rebobinada hasta el cañón: regresa al cargador. */
+	Returned
+};
+
 UCLASS(NotPlaceable)
 class ENTROPY_API ATemporalProjectile : public AActor
 {
@@ -57,6 +67,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Combate")
 	float PlayerPush = 350.f;
 
+	/** Fase 4 · Bala del jugador: daña a los maniquíes (no al jugador) y sus primeros cm van en tiempo real. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Armas")
+	bool bFromPlayer = false;
+
+	/** De qué arma salió (0 revólver, 1 fusil): ahí regresa con la Recarga inversa. */
+	int32 WeaponIndex = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Armas") float TorsoDamage = 55.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Armas") float HeadDamage = 200.f;
+	/** Empujón al cuerpo que tumba (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|Armas") float Impulse = 900.f;
+
+	/** Avisos al arma del jugador (impacto, tumbado, guardado, regresó al cañón). */
+	TFunction<void(ATemporalProjectile*, EEntropiaBulletEvent, AActor*)> OnEvent;
+
 	/** Velocidad con la que se mueve de verdad ahora (con su tiempo propio y el del mundo). Cero si está quieta o rebobinándose. */
 	FVector GetRealVelocity() const;
 
@@ -93,6 +118,11 @@ private:
 	void ReturnToGun();
 	void ResetIgnored();
 	void Paint(const FLinearColor& Color);
+	void Notify(EEntropiaBulletEvent Event, AActor* Victim);
+	/** Si estaba pegada a un maniquí congelado, se despega y su tiro ya no cuenta. */
+	void Unstick();
+	/** Le pega a un maniquí (solo balas del jugador). True si la bala terminó ahí (pegada o destruida). */
+	bool HitMannequin(class ATemporalMannequin* Victim, const FHitResult& Hit);
 	/** Le pega al jugador (vida y empujón). False si no hubo daño (invulnerable): entonces lo atraviesa. */
 	bool HitPlayer(class ACharacter* Victim, const FVector& Where);
 

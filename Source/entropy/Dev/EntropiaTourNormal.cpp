@@ -914,6 +914,102 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		Powers->CycleTimeStopLevel();
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
+	// Fase 4 · Las balas del jugador dañan: cabeza tumba, torso aturde, a un congelado se le guardan; Devuélvesela.
+	auto ShotDummy = [this](int32 Index) -> ATemporalArmedDummy*
+	{
+		return Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().IsValidIndex(Index) ? Rooms->CombatRoom->GetDummies()[Index].Get() : nullptr;
+	};
+	// Dispara una bala del jugador desde atrás del dummy (ahí no hay muro): a la cabeza o al torso.
+	auto ShootDummy = [this, ShotDummy](int32 Index, bool bHead, float Torso, float Head, float Impulse)
+	{
+		if (ATemporalArmedDummy* Target = ShotDummy(Index))
+		{
+			const UCapsuleComponent* Capsule = Target->GetCapsuleComponent();
+			const float Z = bHead ? Capsule->GetScaledCapsuleHalfHeight() - 12.f : 0.f;
+			const FVector Aim = Capsule->GetComponentLocation() + FVector(0.f, 0.f, Z);
+			// 150 cm detrás: el dummy del fondo está a 250 cm de la pared.
+			const FVector From = Aim - Target->GetActorForwardVector() * 150.f;
+			SpawnPlayerTourBullet(From, (Aim - From).GetSafeNormal(), Torso, Head, Impulse);
+		}
+	};
+	auto StuckBullets = [this](const AActor* Target)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			Count += Target && It->GetAttachParentActor() == Target ? 1 : 0;
+		}
+		return Count;
+	};
+	Add(TEXT("armas_prepara"), 1.2f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("tiro_cabeza"), 0.5f, [ShootDummy] { ShootDummy(0, true, 55.f, 200.f, 900.f); });
+	Add(TEXT("tiro_torso"), 0.5f, [this, ShotDummy, ShootDummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiro_cabeza tumbado=%d"), ShotDummy(0) && ShotDummy(0)->IsKnockedDown() ? 1 : 0);
+		ShootDummy(1, false, 55.f, 200.f, 900.f);
+	});
+	Add(TEXT("tiro_congelado"), 0.5f, [this, ShotDummy, ShootDummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiro_torso tumbado=%d aguante=%.0f"), ShotDummy(1) && ShotDummy(1)->IsKnockedDown() ? 1 : 0,
+			ShotDummy(1) ? ShotDummy(1)->GetToughness() : -1.f);
+		if (Powers->TimeStop && ShotDummy(2)) { Powers->TimeStop->StopActor(ShotDummy(2)); }
+		for (int32 i = 0; i < 3; ++i)
+		{
+			ShootDummy(2, false, 20.f, 60.f, 450.f);
+		}
+	});
+	Add(TEXT("tiro_congelado_suelta"), 0.6f, [this, ShotDummy, StuckBullets]
+	{
+		const ATemporalArmedDummy* Target = ShotDummy(2);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiro_congelado guardados=%d pegadas=%d tumbado=%d aguante=%.0f"), Target ? Target->NumStoredShots() : -1,
+			StuckBullets(Target), Target && Target->IsKnockedDown() ? 1 : 0, Target ? Target->GetToughness() : -1.f);
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	Add(TEXT("devuelvesela_prepara"), 0.4f, [this, ShotDummy, StuckBullets]
+	{
+		const ATemporalArmedDummy* Target = ShotDummy(2);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiro_congelado_fin guardados=%d pegadas=%d aguante=%.0f"), Target ? Target->NumStoredShots() : -1,
+			StuckBullets(Target), Target ? Target->GetToughness() : -1.f);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+	});
+	Add(TEXT("devuelvesela_dispara"), 0.15f, [this, ShotDummy]
+	{
+		ATemporalArmedDummy* Target = ShotDummy(1);
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn && Rooms->CombatRoom)
+		{
+			// Frente a él (sin muro en medio): así sí te ve y dispara.
+			Pawn->SetActorLocation(Target->GetActorLocation() + Rooms->CombatRoom->GetActorRightVector() * -250.f + FVector(0.f, 0.f, 2.f), false, nullptr, ETeleportType::TeleportPhysics);
+			Target->FireAtPlayer();
+		}
+	});
+	Add(TEXT("devuelvesela"), 1.2f, [this, ShotDummy]
+	{
+		ATemporalArmedDummy* Target = ShotDummy(1);
+		ATemporalProjectile* Theirs = nullptr;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			if (It->GetOwner() == Target)
+			{
+				Theirs = *It;
+			}
+		}
+		const bool bStarted = Theirs && Powers->Inversion && Powers->Inversion->BeginInversionOn(Theirs->Recorder);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR devuelvesela bala=%d"), Theirs ? 1 : 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR diag_devuelvesela invierte=%d grabado=%.2f"), bStarted ? 1 : 0, Theirs ? Theirs->Recorder->GetRecordedSeconds() : -1.f);
+	});
+	Add(TEXT("devuelvesela_revisa"), 0.3f, [this, ShotDummy]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR devuelvesela_fin dummy_tumbado=%d"), ShotDummy(1) && ShotDummy(1)->IsKnockedDown() ? 1 : 0);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		Rooms->GoToRoom(2);
