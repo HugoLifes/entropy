@@ -66,7 +66,12 @@ public:
 
 	/** Velocidad propia del actor (1 si nadie pide nada). No incluye la dilatación global. */
 	float GetDilation(const AActor* Actor) const;
-	bool IsFrozen(const AActor* Actor) const { return GetDilation(Actor) < FrozenBelow; }
+
+	/** ¿Cuenta como congelado? Por lo suyo (burbuja, Detener) o porque el mundo entero está detenido (Detener nivel 2). */
+	bool IsFrozen(const AActor* Actor) const;
+
+	/** La regla de IsFrozen, pura (probada): el jugador nunca queda congelado por el mundo detenido. */
+	static bool IsFrozenRate(float OwnDilation, float GlobalDilation, bool bIsPlayer);
 
 	/** Tiempo lento para todo el mundo menos el jugador (Sobremarcha, tiempo de reflejo, remate). */
 	void RequestGlobal(const void* Source, float WorldDilation);

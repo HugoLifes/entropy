@@ -1,6 +1,10 @@
 // ENTROPÍA · Teclas del banco de pruebas
 
 #include "EntropiaControlsComponent.h"
+#include "EntropiaLocomotionComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
+#include "EntropiaGrabComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -68,7 +72,9 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::F, IE_Released, this, &UEntropiaControlsComponent::OnInverseReleased);
 	Input->BindKey(EKeys::R, IE_Pressed, this, &UEntropiaControlsComponent::OnRewindPressed);
 	Input->BindKey(EKeys::R, IE_Released, this, &UEntropiaControlsComponent::OnRewindReleased);
-	Input->BindKey(EKeys::E, IE_Pressed, this, &UEntropiaControlsComponent::OnEcho);
+	Input->BindKey(EKeys::E, IE_Pressed, this, &UEntropiaControlsComponent::OnGrab);
+	Input->BindKey(EKeys::H, IE_Pressed, this, &UEntropiaControlsComponent::OnEcho);
+	Input->BindKey(EKeys::N, IE_Pressed, this, &UEntropiaControlsComponent::OnTimeStopLevel);
 	Input->BindKey(EKeys::G, IE_Pressed, this, &UEntropiaControlsComponent::OnClearEchoes);
 	Input->BindKey(EKeys::Q, IE_Pressed, this, &UEntropiaControlsComponent::OnBubble);
 	Input->BindKey(EKeys::T, IE_Pressed, this, &UEntropiaControlsComponent::OnRespawnCubes);
@@ -78,6 +84,8 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::Zero, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom0);
 	Input->BindKey(EKeys::Four, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom4);
 	Input->BindKey(EKeys::Five, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom5);
+	Input->BindKey(EKeys::Six, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom6);
+	Input->BindKey(EKeys::Seven, IE_Pressed, this, &UEntropiaControlsComponent::OnRoom7);
 	Input->BindKey(EKeys::Z, IE_Pressed, this, &UEntropiaControlsComponent::OnFire);
 	Input->BindKey(EKeys::X, IE_Pressed, this, &UEntropiaControlsComponent::OnFireInverted);
 	Input->BindKey(EKeys::B, IE_Pressed, this, &UEntropiaControlsComponent::OnBreakInFront);
@@ -86,6 +94,8 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::RightMouseButton, IE_Released, this, &UEntropiaControlsComponent::OnAimReleased);
 	Input->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &UEntropiaControlsComponent::OnPrimaryPressed);
 	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &UEntropiaControlsComponent::OnDash);
+	Input->BindKey(EKeys::LeftShift, IE_Released, this, &UEntropiaControlsComponent::OnSprintReleased);
+	Input->BindKey(EKeys::C, IE_Pressed, this, &UEntropiaControlsComponent::OnCrouch);
 }
 
 void UEntropiaControlsComponent::ShowHelp() const
@@ -93,9 +103,11 @@ void UEntropiaControlsComponent::ShowHelp() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("MOVERSE · Shift: dash (mantener: correr) · Espacio: saltar o parkour (vallas, subir, trepar, orillas) · C: agacharse o cubrirse (colgado: soltarse) · Clic der.: apuntar"));
+		GEngine->AddOnScreenDebugMessage(1001, 40.f, FColor(120, 220, 255),
+			TEXT("PELEA Y PODERES · Clic izq.: golpes (apuntando: detener) · E: agarrar · F: Paso Inverso · R: invertir · Ctrl+R: todo · V: Sobremarcha · Q: burbuja (N: nivel 2 = detener todo) · H: eco · G: borrar ecos · T: cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
-			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 0: volver a las cajas"));
+			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 0: volver a las cajas"));
 	}
 }
 
@@ -198,6 +210,16 @@ void UEntropiaControlsComponent::OnRoom5()
 	Rooms->GoToRoom(5);
 }
 
+void UEntropiaControlsComponent::OnRoom6()
+{
+	Rooms->GoToRoom(6);
+}
+
+void UEntropiaControlsComponent::OnRoom7()
+{
+	Rooms->GoToRoom(7);
+}
+
 void UEntropiaControlsComponent::OnFire()
 {
 	Rooms->Fire();
@@ -241,6 +263,65 @@ void UEntropiaControlsComponent::OnPrimaryPressed()
 
 void UEntropiaControlsComponent::OnDash()
 {
+	// Shift: el dash sale al presionar; si lo mantienes, sigues corriendo.
 	Powers->TryDash();
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->SetSprint(true);
+	}
+}
+
+void UEntropiaControlsComponent::OnSprintReleased()
+{
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->SetSprint(false);
+	}
+}
+
+void UEntropiaControlsComponent::OnTimeStopLevel()
+{
+	Powers->CycleTimeStopLevel();
+}
+
+void UEntropiaControlsComponent::OnGrab()
+{
+	// E: agarrar (llave, desarmar, someter); si ya lo tienes, lo sueltas con un empujón.
+	if (!Powers->Grab)
+	{
+		return;
+	}
+	if (Powers->Grab->IsHolding())
+	{
+		Powers->Grab->Release(true);
+	}
+	else
+	{
+		Powers->Grab->TryGrab();
+	}
+}
+
+void UEntropiaControlsComponent::OnCrouch()
+{
+	// Colgado de una orilla, C te suelta.
+	if (Powers->Parkour && Powers->Parkour->IsHanging())
+	{
+		Powers->Parkour->Drop();
+		return;
+	}
+	// Cubierto: C te despega. Junto a una pared o barda: te cubres. Si no: te agachas.
+	if (Powers->Cover && Powers->Cover->IsInCover())
+	{
+		Powers->Cover->Exit();
+		return;
+	}
+	if (Powers->Cover && Powers->Cover->TryEnter())
+	{
+		return;
+	}
+	if (Powers->Locomotion)
+	{
+		Powers->Locomotion->ToggleCrouch();
+	}
 }
 

@@ -12,6 +12,13 @@
 class ATemporalMannequin;
 class UAnimMontage;
 
+/** Romper el cuello (por la espalda, sometido) o golpe con enfoque (congelado de frente). */
+enum class EEntropiaTakedown : uint8
+{
+	NeckBreak,
+	FocusStrike
+};
+
 UCLASS(ClassGroup = (Entropia), meta = (BlueprintSpawnableComponent, DisplayName = "Takedown (Remates)"))
 class ENTROPY_API UTakedownComponent : public UActorComponent
 {
@@ -59,6 +66,13 @@ public:
 	/** Corta el remate en curso (al morir): sin cámara lenta, sin golpe pendiente, sin animación. */
 	void Cancel();
 
+	/** Qué remate sale. Por la espalda o sometido: romper el cuello. Congelado de frente: golpe con enfoque. Lógica pura (probada). */
+	static EEntropiaTakedown ChooseKind(bool bBehind, bool bFrozen, bool bSubdued);
+
+	/** El remate que saldría ahora con el disponible (para el HUD). */
+	EEntropiaTakedown GetAvailableKind() const { return AvailableKind; }
+	EEntropiaTakedown GetLastKind() const { return LastKind; }
+
 	/** ¿Se puede rematar? Cerca y (a su espalda o congelado). Lógica pura, probada. */
 	static bool CanTakedown(const FVector& Attacker, const FVector& Target, const FVector& TargetForward, bool bFrozen, float InMaxDistance, float InBehindAngle);
 
@@ -78,6 +92,9 @@ private:
 	TWeakObjectPtr<ATemporalMannequin> Available;
 	TWeakObjectPtr<ATemporalMannequin> Victim;
 	FVector HitDirection = FVector::ForwardVector;
+	EEntropiaTakedown AvailableKind = EEntropiaTakedown::FocusStrike;
+	EEntropiaTakedown LastKind = EEntropiaTakedown::FocusStrike;
+	EEntropiaTakedown CurrentKind = EEntropiaTakedown::FocusStrike;
 	float BusyTimer = 0.f;
 	float Elapsed = 0.f;
 	float SlowTimer = 0.f;

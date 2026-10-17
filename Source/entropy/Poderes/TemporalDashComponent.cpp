@@ -9,6 +9,8 @@
 #include "TemporalDilation.h"
 #include "TemporalProjectile.h"
 #include "TakedownComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
@@ -95,7 +97,8 @@ bool UTemporalDashComponent::TryDash()
 	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
 	const UInverseStepComponent* Inverse = Character->FindComponentByClass<UInverseStepComponent>();
 	const UTakedownComponent* Takedown = Character->FindComponentByClass<UTakedownComponent>();
-	if (!Move || (Inverse && Inverse->IsInverseActive()) || (Takedown && Takedown->IsBusy()))
+	const UEntropiaParkourComponent* Parkour = Character->FindComponentByClass<UEntropiaParkourComponent>();
+	if (!Move || (Inverse && Inverse->IsInverseActive()) || (Takedown && Takedown->IsBusy()) || (Parkour && Parkour->IsBusy()))
 	{
 		return false;
 	}
@@ -103,6 +106,11 @@ bool UTemporalDashComponent::TryDash()
 	if (!CanDash(SinceLastDash, Cooldown, bFalling, bAirDashUsed))
 	{
 		return false;
+	}
+	// Desde la cobertura, el dash te despega primero (si no, solo podrías ir a lo largo de la pared).
+	if (UEntropiaCoverComponent* Cover = Character->FindComponentByClass<UEntropiaCoverComponent>(); Cover && Cover->IsInCover())
+	{
+		Cover->Exit();
 	}
 
 	DashDirection = ComputeDashDirection(Character->GetLastMovementInputVector(), Character->GetActorForwardVector());

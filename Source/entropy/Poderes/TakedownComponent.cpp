@@ -3,6 +3,9 @@
 #include "TakedownComponent.h"
 #include "InverseStepComponent.h"
 #include "TemporalDashComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "EntropiaAnimationSet.h"
+#include "TemporalAimComponent.h"
 #include "TemporalDilation.h"
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
@@ -38,6 +41,11 @@ void UTakedownComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	EndSlow();
 	Super::EndPlay(EndPlayReason);
+}
+
+EEntropiaTakedown UTakedownComponent::ChooseKind(bool bBehind, bool bFrozen, bool bSubdued)
+{
+	return (bBehind || bSubdued) ? EEntropiaTakedown::NeckBreak : EEntropiaTakedown::FocusStrike;
 }
 
 bool UTakedownComponent::CanTakedown(const FVector& Attacker, const FVector& Target, const FVector& TargetForward, bool bFrozen, float InMaxDistance, float InBehindAngle)
@@ -76,8 +84,9 @@ ATemporalMannequin* UTakedownComponent::FindTarget() const
 		{
 			continue;
 		}
-		const bool bFrozen = Dilation && Dilation->IsFrozen(Mannequin);
-		if (!CanTakedown(Owner->GetActorLocation(), Mannequin->GetActorLocation(), Mannequin->GetActorForwardVector(), bFrozen, MaxDistance, BehindAngle))
+		// Congelado o sometido: se puede de cualquier lado.
+		const bool bFree = (Dilation && Dilation->IsFrozen(Mannequin)) || Mannequin->IsSubdued();
+		if (!CanTakedown(Owner->GetActorLocation(), Mannequin->GetActorLocation(), Mannequin->GetActorForwardVector(), bFree, MaxDistance, BehindAngle))
 		{
 			continue;
 		}
@@ -95,7 +104,8 @@ bool UTakedownComponent::TryTakedown()
 {
 	ACharacter* Character = Cast<ACharacter>(GetOwner());
 	const UInverseStepComponent* Inverse = Character ? Character->FindComponentByClass<UInverseStepComponent>() : nullptr;
-	if (!Character || IsBusy() || (Inverse && Inverse->IsInverseActive()))
+	const UEntropiaParkourComponent* Parkour = Character ? Character->FindComponentByClass<UEntropiaParkourComponent>() : nullptr;
+	if (!Character || IsBusy() || (Inverse && Inverse->IsInverseActive()) || (Parkour && Parkour->IsBusy()))
 	{
 		return false;
 	}
@@ -107,6 +117,11 @@ bool UTakedownComponent::TryTakedown()
 
 	// Alinearte: a su espalda si estás atrás; si está congelado de frente, frente a él.
 	const bool bBehind = CanTakedown(Character->GetActorLocation(), Target->GetActorLocation(), Target->GetActorForwardVector(), false, MaxDistance, BehindAngle);
+	const UTemporalDilationSubsystem* DilationNow = UTemporalDilationSubsystem::Get(this);
+	const bool bFrozen = DilationNow && DilationNow->IsFrozen(Target);
+	const bool bSubdued = Target->IsSubdued();
+	CurrentKind = ChooseKind(bBehind, bFrozen, bSubdued);
+	LastKind = CurrentKind;
 	FVector Facing = bBehind ? Target->GetActorForwardVector() : (Target->GetActorLocation() - Character->GetActorLocation());
 	Facing.Z = 0.f;
 	Facing = Facing.GetSafeNormal();
@@ -119,30 +134,46 @@ bool UTakedownComponent::TryTakedown()
 	{
 		Dash->CancelDash();
 	}
-	FVector Spot = Target->GetActorLocation() - Facing * AlignDistance;
-	Spot.Z = Character->GetActorLocation().Z;
-	Character->SetActorLocation(Spot, /*bSweep=*/true);
+	// Sometido: ya estás pegado a él (no te mueve el agarre).
+	if (!bSubdued)
+	{
+		FVector Spot = Target->GetActorLocation() - Facing * AlignDistance;
+		Spot.Z = Character->GetActorLocation().Z;
+		Character->SetActorLocation(Spot, /*bSweep=*/true);
+	}
 	Character->SetActorRotation(Facing.Rotation());
 
-	// Cámara lenta breve (el árbitro te compensa a ti).
-	if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
+	const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+	if (CurrentKind == EEntropiaTakedown::FocusStrike)
 	{
-		Dilation->RequestGlobal(this, SlowDilation);
-	}
-	SlowTimer = SlowSeconds;
-
-	if (UAnimInstance* Anim = Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr)
-	{
-		if (AttackMontage)
+		// Golpe con enfoque: cámara lenta breve (el árbitro te compensa a ti) y la cámara se acerca al golpe.
+		if (UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this))
 		{
-			// El golpe no debe mover al personaje (ya lo alineamos).
-			Anim->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
-			Anim->Montage_Play(AttackMontage, 1.4f);
+			Dilation->RequestGlobal(this, SlowDilation);
+		}
+		SlowTimer = SlowSeconds;
+		if (UTemporalAimComponent* Aim = Character->FindComponentByClass<UTemporalAimComponent>())
+		{
+			Aim->StartFocus(0.8f);
+		}
+		const float Played = Set ? EntropiaAnim::Play(Character, Set->FocusStrike) : 0.f;
+		if (Played <= 0.f && AttackMontage)
+		{
+			if (UAnimInstance* Anim = Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr)
+			{
+				Anim->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+				Anim->Montage_Play(AttackMontage, 1.4f);
+			}
+		}
+		if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+		{
+			FX->Pulse(Target->GetActorLocation(), 0.045f, 0.6f, 0.5f);
 		}
 	}
-	if (UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this))
+	else if (Set)
 	{
-		FX->Pulse(Target->GetActorLocation(), 0.045f, 0.6f, 0.5f);
+		// Romper el cuello: rápido y en silencio (sin cámara lenta ni onda grande).
+		EntropiaAnim::Play(Character, Set->NeckBreak);
 	}
 
 	Victim = Target;
@@ -203,12 +234,26 @@ void UTakedownComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 			bHitLanded = true;
 			if (ATemporalMannequin* Target = Victim.Get())
 			{
-				Target->ReceiveTakedown(HitDirection, Impulse);
-				TemporalFX::Burst(this, Target->GetActorLocation(), FLinearColor(1.f, 0.6f, 0.3f), 0.6f);
+				if (CurrentKind == EEntropiaTakedown::NeckBreak)
+				{
+					Target->ReceiveNeckBreak(HitDirection);
+				}
+				else
+				{
+					Target->ReceiveTakedown(HitDirection, Impulse);
+					TemporalFX::Burst(this, Target->GetActorLocation(), FLinearColor(1.f, 0.6f, 0.3f), 0.6f);
+				}
 			}
 		}
 		return;
 	}
 
 	Available = FindTarget();
+	if (const ATemporalMannequin* Target = Available.Get())
+	{
+		const AActor* Owner = GetOwner();
+		const bool bBehind = CanTakedown(Owner->GetActorLocation(), Target->GetActorLocation(), Target->GetActorForwardVector(), false, MaxDistance, BehindAngle);
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		AvailableKind = ChooseKind(bBehind, Dilation && Dilation->IsFrozen(Target), Target->IsSubdued());
+	}
 }

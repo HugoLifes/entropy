@@ -5,6 +5,7 @@
 #include "TemporalFX.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalSubsystem.h"
+#include "EntropiaAnimationSet.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -87,16 +88,91 @@ void ATemporalMannequin::ReceiveTakedown(const FVector& Direction, float Impulse
 	KnockDown(Direction, Impulse);
 }
 
+void ATemporalMannequin::ReceiveHit(const FVector& Direction, bool bKnockdown)
+{
+	if (bKnockedDown || bPendingHit)
+	{
+		return;
+	}
+	if (bKnockdown)
+	{
+		ReceiveTakedown(Direction, 700.f);
+		return;
+	}
+	StaggerTime = StaggerSeconds;
+	LaunchCharacter(FVector(Direction.X, Direction.Y, 0.f).GetSafeNormal() * 250.f, true, false);
+	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+	{
+		EntropiaAnim::Play(this, Set->VictimHit);
+	}
+	TemporalFX::Burst(this, GetActorLocation() + FVector(0.f, 0.f, 50.f), FLinearColor(1.f, 0.75f, 0.5f), 0.3f);
+}
+
+void ATemporalMannequin::SetSubdued(bool bInSubdued, float PoseDelay)
+{
+	bSubdued = bInSubdued;
+	SubduedPoseDelay = bInSubdued ? FMath::Max(PoseDelay, 0.f) : 0.f;
+	const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get();
+	if (!Set)
+	{
+		return;
+	}
+	if (bSubdued)
+	{
+		if (SubduedPoseDelay <= 0.f)
+		{
+			EntropiaAnim::Play(this, Set->VictimSubdued);
+		}
+	}
+	else if (EntropiaAnim::IsPlaying(this, Set->VictimSubdued))
+	{
+		EntropiaAnim::Stop(this, 0.2f);
+	}
+}
+
+void ATemporalMannequin::ReceiveNeckBreak(const FVector& Direction)
+{
+	if (bKnockedDown || bPendingHit || NeckBreakTime > 0.f)
+	{
+		return;
+	}
+	bSubdued = false;
+	SubduedPoseDelay = 0.f;
+	StaggerTime = 0.f;
+	NeckBreakDirection = Direction;
+	const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+	if (Dilation && Dilation->IsFrozen(this))
+	{
+		// Congelado: el crujido queda guardado y cae cuando su tiempo vuelve.
+		bPendingNeckBreak = true;
+		bPendingHit = true;
+		PendingDirection = Direction;
+		PendingImpulse = 60.f;
+		TemporalFX::Burst(this, GetActorLocation() + FVector(0.f, 0.f, 70.f), FLinearColor(0.6f, 0.92f, 1.f), 0.4f);
+		return;
+	}
+	NeckBreakTime = 0.7f;
+	if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+	{
+		EntropiaAnim::Play(this, Set->VictimNeckBreak);
+	}
+}
+
 void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
 {
 	bKnockedDown = true;
 	bPendingHit = false;
+	// Tirado ya no está en la llave (quien lo tenía agarrado lo suelta).
+	bSubdued = false;
+	SubduedPoseDelay = 0.f;
 	DownTime = 0.f;
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetCharacterMovement()->DisableMovement();
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	// El cuerpo que cae no empuja la cámara (si no, se mete en tu cara al rematar de cerca).
+	Body->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	// Así la burbuja de Brecha también lo detecta tirado (la cápsula ya no choca).
 	Body->SetGenerateOverlapEvents(true);
 	Body->SetSimulatePhysics(true);
@@ -171,6 +247,11 @@ void ATemporalMannequin::SetRagdollFrozen(bool bFrozen)
 void ATemporalMannequin::ResetMannequin()
 {
 	bPendingHit = false;
+	bPendingNeckBreak = false;
+	StaggerTime = 0.f;
+	NeckBreakTime = 0.f;
+	bSubdued = false;
+	SubduedPoseDelay = 0.f;
 	if (bKnockedDown)
 	{
 		Recover(false);
@@ -184,11 +265,43 @@ void ATemporalMannequin::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// DeltaTime ya trae su tiempo propio: congelado vale 0 (no gira, no se levanta).
+	StaggerTime = FMath::Max(0.f, StaggerTime - DeltaTime);
+	if (bSubdued && SubduedPoseDelay > 0.f)
+	{
+		// Terminó de verse el desarme: queda en la llave.
+		SubduedPoseDelay -= DeltaTime;
+		if (SubduedPoseDelay <= 0.f)
+		{
+			SubduedPoseDelay = 0.f;
+			if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
+			{
+				EntropiaAnim::Play(this, Set->VictimSubdued);
+			}
+		}
+	}
+	if (NeckBreakTime > 0.f)
+	{
+		// Se desploma: al terminar la animación de muerte, muñeco de trapo sin empujón.
+		NeckBreakTime -= DeltaTime;
+		if (NeckBreakTime <= 0.f)
+		{
+			NeckBreakTime = 0.f;
+			KnockDown(NeckBreakDirection, 60.f);
+		}
+		return;
+	}
 	if (bPendingHit)
 	{
 		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
 		if (!Dilation || !Dilation->IsFrozen(this))
 		{
+			if (bPendingNeckBreak)
+			{
+				bPendingNeckBreak = false;
+				bPendingHit = false;
+				ReceiveNeckBreak(PendingDirection);
+				return;
+			}
 			KnockDown(PendingDirection, PendingImpulse);
 		}
 		return;

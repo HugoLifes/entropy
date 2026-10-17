@@ -1,6 +1,12 @@
 // ENTROPÍA · Poderes del jugador
 
 #include "EntropiaPlayerPowers.h"
+#include "EntropiaLocomotionComponent.h"
+#include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
+#include "EntropiaMeleeComponent.h"
+#include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -80,6 +86,13 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		}
 
 		// La mira va antes que los poderes que la usan (Invertir, Detener).
+		// La locomoción va antes que la mira: la mira guarda el giro "base" que la locomoción ya ajustó.
+		Locomotion = TemporalFX::FindOrAddComponent<UEntropiaLocomotionComponent>(Pawn, TEXT("Locomotion"));
+		Parkour = TemporalFX::FindOrAddComponent<UEntropiaParkourComponent>(Pawn, TEXT("Parkour"));
+		Cover = TemporalFX::FindOrAddComponent<UEntropiaCoverComponent>(Pawn, TEXT("Cover"));
+		Melee = TemporalFX::FindOrAddComponent<UEntropiaMeleeComponent>(Pawn, TEXT("Melee"));
+		Grab = TemporalFX::FindOrAddComponent<UEntropiaGrabComponent>(Pawn, TEXT("Grab"));
+		WorldStop = TemporalFX::FindOrAddComponent<UTemporalWorldStopComponent>(Pawn, TEXT("WorldStop"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
@@ -99,6 +112,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 				HUD->SetHealth(Health);
 				HUD->SetDash(Dash);
 				HUD->SetTakedown(Takedown);
+				HUD->SetGrab(Grab);
 				HUD->AddToViewport();
 			}
 		}
@@ -174,6 +188,12 @@ void UEntropiaPlayerPowers::ClearEchoes()
 
 void UEntropiaPlayerPowers::SpawnBubble()
 {
+	// Nivel 2: el mundo entero se detiene (Star Platinum: The World).
+	if (TimeStopLevel >= 2 && WorldStop)
+	{
+		WorldStop->Start();
+		return;
+	}
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
 	if (!Pawn)
 	{
@@ -205,15 +225,23 @@ void UEntropiaPlayerPowers::SpawnBubble()
 
 void UEntropiaPlayerPowers::PrimaryAction()
 {
-	// Si el HUD muestra "CLIC: REMATE", el clic remata; si no, detiene lo que está en la mira.
-	// Durante un remate los clics extra no hacen nada (antes detenían al maniquí a medio golpe).
+	// Si el HUD muestra un remate, el clic remata. Durante un remate los clics extra no hacen nada.
 	if (Takedown && (Takedown->IsBusy() || Takedown->TryTakedown()))
 	{
 		return;
 	}
-	if (TimeStop)
+	// Apuntando: Detener lo que está en la mira. Sin apuntar: golpes (combo de 3).
+	if (Aim && Aim->IsAiming())
 	{
-		TimeStop->StopAimed();
+		if (TimeStop)
+		{
+			TimeStop->StopAimed();
+		}
+		return;
+	}
+	if (Melee)
+	{
+		Melee->TryAttack();
 	}
 }
 
@@ -233,8 +261,35 @@ void UEntropiaPlayerPowers::ToggleOverdrive()
 	}
 }
 
+void UEntropiaPlayerPowers::CycleTimeStopLevel()
+{
+	TimeStopLevel = TimeStopLevel >= 2 ? 1 : 2;
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1008, 3.f, FColor(200, 160, 255),
+			TimeStopLevel >= 2 ? TEXT("Detener el tiempo: NIVEL 2 (Q detiene todo el mundo)") : TEXT("Detener el tiempo: NIVEL 1 (Q = burbuja)"));
+	}
+}
+
 void UEntropiaPlayerPowers::EndForTeleport()
 {
+	// Teletransportarte o morir corta el mundo detenido (nunca se queda congelado ni sin color).
+	if (WorldStop)
+	{
+		WorldStop->Stop();
+	}
+	if (Parkour)
+	{
+		Parkour->Cancel();
+	}
+	if (Cover)
+	{
+		Cover->Exit();
+	}
+	if (Grab && Grab->IsHolding())
+	{
+		Grab->Release(false);
+	}
 	if (InverseStep)
 	{
 		InverseStep->EndInverseStep();

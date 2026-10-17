@@ -71,6 +71,12 @@ public:
 	/** 0 = sin apuntar, 1 = apuntando (sube y baja suave). */
 	float GetAimAlpha() const { return AimAlpha; }
 
+	/** Hombro de la cámara: +1 derecho (normal), -1 izquierdo (al asomarte por una esquina izquierda). */
+	void SetShoulderSide(float Side) { ShoulderTarget = Side >= 0.f ? 1.f : -1.f; }
+
+	/** La cámara se acerca un momento (golpe con enfoque). */
+	void StartFocus(float Seconds) { FocusTimer = Seconds; }
+
 	/** Busca de nuevo lo que está en la mira (la cámara pudo girar desde el último frame). */
 	AActor* FindTarget() const;
 
@@ -97,7 +103,6 @@ private:
 	void Select(AActor* Target);
 	void ClearHighlight();
 	void ApplyCamera();
-	void ApplyWalkSpeed();
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> HighlightMaterial;
@@ -111,6 +116,10 @@ private:
 
 	bool bAiming = false;
 	float AimAlpha = 0.f;
+	float ShoulderSide = 1.f;
+	float ShoulderTarget = 1.f;
+	float FocusTimer = 0.f;
+	float FocusAlpha = 0.f;
 	float BaseWalkSpeed = 500.f;
 	bool bBaseOrientToMovement = true;
 	bool bBaseUseControllerDesiredRotation = false;

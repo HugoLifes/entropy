@@ -13,7 +13,7 @@ if (-not ($build -match 'Result: Succeeded')) { Write-Output 'BUILD FAILED'; exi
 if ($NoTests) { exit 0 }
 
 & 'D:\unreal projets\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' $Proj -ExecCmds="Automation RunTests Entropia;Quit" -unattended -nopause -nullrhi -nosplash -NoSound -log "-ABSLOG=$W\tests.log" *> "$W\tests-stdout.log"
-$res = Select-String -Path "$W\tests.log" -Pattern 'Test Completed\. Result=|No automation tests matched|Error: ' | ForEach-Object { $_.Line.Trim() } | Where-Object { $_ -notmatch 'Condition failed' } | ForEach-Object { $_ -replace '^.*(Result=\{\w+\}).*Path=\{([^}]*)\}.*$', '$1 $2' } | Select-Object -Last 40
+$res = Select-String -Path "$W\tests.log" -Pattern 'Test Completed\. Result=|No automation tests matched|Error: ' | ForEach-Object { $_.Line.Trim() } | Where-Object { $_ -notmatch 'Condition failed' } | ForEach-Object { $_ -replace '^.*(Result=\{\w+\}).*Path=\{([^}]*)\}.*$', '$1 $2' }
 $res
 $fails = ($res | Where-Object { $_ -match 'Result=\{Fail' }).Count
 $ok = ($res | Where-Object { $_ -match 'Result=\{Success' }).Count

@@ -7,6 +7,7 @@
 #include "TemporalHealthComponent.h"
 #include "TemporalDashComponent.h"
 #include "TakedownComponent.h"
+#include "EntropiaGrabComponent.h"
 
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -24,8 +25,14 @@ namespace EntropiaHUD
 		if (Power == TEXT("Sobremarcha")) { return FLinearColor(0.2f, 0.9f, 0.8f); }
 		if (Power == TEXT("Detener")) { return FLinearColor(0.6f, 0.92f, 1.f); }
 		if (Power == TEXT("OjoLento")) { return FLinearColor(0.75f, 0.6f, 1.f); }
+		if (Power == TEXT("MundoDetenido")) { return FLinearColor(1.f, 0.78f, 0.25f); }
 		return FLinearColor(0.9f, 0.9f, 0.9f);
 	}
+}
+
+void UTemporalHUDWidget::SetGrab(UEntropiaGrabComponent* InGrab)
+{
+	Grab = InGrab;
 }
 
 void UTemporalHUDWidget::NativeConstruct()
@@ -49,7 +56,20 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
 		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(FVector2D(200.f, 24.f), FSlateLayoutTransform(Center + FVector2D(-58.f, 26.f))),
-			FString(TEXT("CLIC: REMATE")), PromptFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.35f, 0.25f, 1.f));
+			FString(TakedownComp->GetAvailableKind() == EEntropiaTakedown::NeckBreak ? TEXT("CLIC: ROMPER CUELLO") : TEXT("CLIC: REMATE")),
+			PromptFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.35f, 0.25f, 1.f));
+	}
+
+	// Agarrar: aviso debajo de la mira (si no hay uno de remate).
+	const UTakedownComponent* TakedownNow = Takedown.Get();
+	const UEntropiaGrabComponent* GrabComp = Grab.Get();
+	if (GrabComp && !(TakedownNow && TakedownNow->GetAvailableTarget()) && (GrabComp->HasGrabbable() || GrabComp->IsHolding()))
+	{
+		const FSlateFontInfo GrabFont = FCoreStyle::GetDefaultFontStyle("Bold", 13);
+		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId + 3,
+			AllottedGeometry.ToPaintGeometry(FVector2D(260.f, 24.f), FSlateLayoutTransform(Center + FVector2D(-52.f, 26.f))),
+			FString(GrabComp->IsHolding() ? TEXT("E: SOLTAR") : TEXT("E: AGARRAR")), GrabFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.85f, 0.5f, 1.f));
 	}
 
 	// Tiempo de reflejo: aviso arriba al centro mientras dura.

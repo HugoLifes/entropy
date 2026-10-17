@@ -18,6 +18,14 @@
 #include "TemporalHealthComponent.h"
 #include "TemporalCombat.h"
 #include "TakedownComponent.h"
+#include "EntropiaLocomotionComponent.h"
+#include "EntropiaFalls.h"
+#include "EntropiaParkour.h"
+#include "EntropiaCoverComponent.h"
+#include "TemporalArmedDummy.h"
+#include "EntropiaMeleeComponent.h"
+#include "EntropiaGrabComponent.h"
+#include "TemporalWorldStopComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -595,6 +603,206 @@ bool FEntropiaTakedownCondition::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Por la espalda pero a 2.5 m: no"), UTakedownComponent::CanTakedown(FVector(-250.f, 0.f, 0.f), Target, Forward, false, 180.f, 120.f));
 	TestFalse(TEXT("De lado (90°): no"), UTakedownComponent::CanTakedown(FVector(0.f, 150.f, 0.f), Target, Forward, false, 180.f, 120.f));
 	TestFalse(TEXT("Congelado pero lejos: no"), UTakedownComponent::CanTakedown(FVector(400.f, 0.f, 0.f), Target, Forward, true, 180.f, 120.f));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Locomoción
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaLocomotionWalkSpeed, "Entropia.Locomotion.WalkSpeed", EntropiaTestFlags::Flags)
+bool FEntropiaLocomotionWalkSpeed::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Normal: 450"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, false, 0.f), 450.f, 0.01f);
+	TestEqual(TEXT("Corriendo: 700"), UEntropiaLocomotionComponent::ComputeWalkSpeed(true, false, 0.f), 700.f, 0.01f);
+	TestEqual(TEXT("Agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 0.f), 220.f, 0.01f);
+	TestEqual(TEXT("Apuntar gana a correr: 320"), UEntropiaLocomotionComponent::ComputeWalkSpeed(true, false, 1.f), 320.f, 0.01f);
+	TestEqual(TEXT("Agachado apuntando sigue agachado: 220"), UEntropiaLocomotionComponent::ComputeWalkSpeed(false, true, 1.f), 220.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaFallOutcome, "Entropia.Fall.Outcome", EntropiaTestFlags::Flags)
+bool FEntropiaFallOutcome::RunTest(const FString& Parameters)
+{
+	float Damage = -1.f;
+	TestTrue(TEXT("3 m: normal"), EntropiaFalls::Decide(300.f, 300.f, Damage) == EEntropiaLanding::Normal);
+	TestEqual(TEXT("3 m: sin daño"), Damage, 0.f);
+	TestTrue(TEXT("6 m moviéndose: rueda"), EntropiaFalls::Decide(600.f, 300.f, Damage) == EEntropiaLanding::Roll);
+	TestEqual(TEXT("Rodando no hay daño"), Damage, 0.f);
+	TestTrue(TEXT("6 m quieto: aterrizaje duro"), EntropiaFalls::Decide(600.f, 50.f, Damage) == EEntropiaLanding::Hard);
+	TestEqual(TEXT("6 m quieto: sin daño"), Damage, 0.f);
+	TestTrue(TEXT("12 m: aterrizaje duro"), EntropiaFalls::Decide(1200.f, 600.f, Damage) == EEntropiaLanding::Hard);
+	TestEqual(TEXT("12 m: 10 por metro arriba de 9 m = 30"), Damage, 30.f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Parkour
+
+namespace EntropiaParkourTest
+{
+	FEntropiaObstacle Make(float Height, float Depth, bool bTopClear = true, bool bLandingClear = true, float Distance = 60.f)
+	{
+		FEntropiaObstacle O;
+		O.bHit = true;
+		O.Height = Height;
+		O.Depth = Depth;
+		O.bTopClear = bTopClear;
+		O.bLandingClear = bLandingClear;
+		O.Distance = Distance;
+		return O;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourClassify, "Entropia.Parkour.Classify", EntropiaTestFlags::Flags)
+bool FEntropiaParkourClassify::RunTest(const FString& Parameters)
+{
+	using EntropiaParkourTest::Make;
+	TestTrue(TEXT("Nada enfrente: nada"), EntropiaParkour::Classify(FEntropiaObstacle(), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("30 cm: se camina, nada"), EntropiaParkour::Classify(Make(30.f, 40.f), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Barda de 100 x 40: dash vault"), EntropiaParkour::Classify(Make(100.f, 40.f), false) == EEntropiaTraversal::DashVault);
+	TestTrue(TEXT("Mesa de 100 x 150 corriendo: gato"), EntropiaParkour::Classify(Make(100.f, 150.f), true) == EEntropiaTraversal::Kong);
+	TestTrue(TEXT("Mesa de 100 x 150 caminando: subir"), EntropiaParkour::Classify(Make(100.f, 150.f), false) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Barda sin piso del otro lado: subir"), EntropiaParkour::Classify(Make(100.f, 40.f, true, false), false) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Plataforma de 100 (fondo grande): subir"), EntropiaParkour::Classify(Make(100.f, 999.f), true) == EEntropiaTraversal::StepUp);
+	TestTrue(TEXT("Muro de 200: trepar"), EntropiaParkour::Classify(Make(200.f, 999.f), false) == EEntropiaTraversal::Climb);
+	TestTrue(TEXT("Muro de 200 sin espacio arriba: nada"), EntropiaParkour::Classify(Make(200.f, 999.f, false), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Muro de 300 corriendo: correr por la pared"), EntropiaParkour::Classify(Make(300.f, 999.f), true) == EEntropiaTraversal::WallRun);
+	TestTrue(TEXT("Muro de 300 caminando: nada"), EntropiaParkour::Classify(Make(300.f, 999.f), false) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Muro de 400 corriendo: nada"), EntropiaParkour::Classify(Make(400.f, 999.f), true) == EEntropiaTraversal::None);
+	TestTrue(TEXT("Barda muy lejos: nada"), EntropiaParkour::Classify(Make(100.f, 40.f, true, true, 300.f), false) == EEntropiaTraversal::None);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourPath, "Entropia.Parkour.PathArcsOverObstacle", EntropiaTestFlags::Flags)
+bool FEntropiaParkourPath::RunTest(const FString& Parameters)
+{
+	const FVector Start(0.f, 0.f, 96.f);
+	const FVector Edge(100.f, 0.f, 100.f);
+	const FVector End(250.f, 0.f, 96.f);
+	for (const EEntropiaTraversal Kind : { EEntropiaTraversal::DashVault, EEntropiaTraversal::Kong })
+	{
+		TestTrue(TEXT("Empieza donde estás"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 0.f).Equals(Start, 0.5f));
+		TestTrue(TEXT("Termina del otro lado"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 1.f).Equals(End, 0.5f));
+		TestTrue(TEXT("A la mitad va por encima del borde"), EntropiaParkour::PathPoint(Kind, Start, Edge, End, 0.5f).Z >= Edge.Z + 40.f);
+	}
+	// Trepar: primero sube junto al muro y después avanza arriba.
+	const FVector Top(160.f, 0.f, 296.f);
+	const FVector Wall(100.f, 0.f, 200.f);
+	TestTrue(TEXT("Trepar empieza donde estás"), EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 0.f).Equals(Start, 0.5f));
+	TestTrue(TEXT("Trepar termina arriba"), EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 1.f).Equals(Top, 0.5f));
+	const FVector Mid = EntropiaParkour::PathPoint(EEntropiaTraversal::Climb, Start, Wall, Top, 0.55f);
+	TestTrue(TEXT("Al subir no atraviesa el muro (sigue de este lado)"), Mid.X < Wall.X);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaParkourLedgeReach, "Entropia.Parkour.LedgeReach", EntropiaTestFlags::Flags)
+bool FEntropiaParkourLedgeReach::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Borde a 1.5 m sobre los pies: lo alcanzas"), EntropiaParkour::CanGrabLedge(150.f));
+	TestFalse(TEXT("Borde a 1 m: muy bajo, mejor subir"), EntropiaParkour::CanGrabLedge(100.f));
+	TestFalse(TEXT("Borde a 2.6 m: no llegan las manos"), EntropiaParkour::CanGrabLedge(260.f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCoverKind, "Entropia.Cover.Kind", EntropiaTestFlags::Flags)
+bool FEntropiaCoverKind::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("60 cm: no tapa"), EntropiaCover::KindForHeight(60.f) == EEntropiaCover::None);
+	TestTrue(TEXT("90 cm: cobertura baja (agachado)"), EntropiaCover::KindForHeight(90.f) == EEntropiaCover::Low);
+	TestTrue(TEXT("150 cm: todavía baja"), EntropiaCover::KindForHeight(150.f) == EEntropiaCover::Low);
+	TestTrue(TEXT("200 cm: cobertura alta (de pie)"), EntropiaCover::KindForHeight(200.f) == EEntropiaCover::High);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Dummy armado
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaArmedDummyRoutine, "Entropia.ArmedDummy.Routine", EntropiaTestFlags::Flags)
+bool FEntropiaArmedDummyRoutine::RunTest(const FString& Parameters)
+{
+	using EStep = FArmedDummyRoutine::EStep;
+	FArmedDummyRoutine R;
+	TestEqual(TEXT("Congelado (Dt 0) no avanza"), R.Advance(0.f), 0);
+	TestTrue(TEXT("Sigue cubierto"), R.Step == EStep::Covered);
+	TestEqual(TEXT("2.4 s cubierto: nada"), R.Advance(2.4f), 0);
+	TestEqual(TEXT("Pasa de 2.5 s: se asoma (sin disparar aún)"), R.Advance(0.2f), 0);
+	TestTrue(TEXT("Asomándose"), R.Step == EStep::Stepping);
+	TestEqual(TEXT("Ya afuera: primer disparo"), R.Advance(0.25f), 1);
+	TestTrue(TEXT("Disparando"), R.Step == EStep::Firing);
+	TestEqual(TEXT("0.35 s después: segundo disparo"), R.Advance(0.35f), 1);
+	TestEqual(TEXT("No hay tercero"), R.Advance(0.3f), 0);
+	TestTrue(TEXT("Regresa a cubrirse"), R.Step == EStep::Returning);
+	R.Advance(0.3f);
+	TestTrue(TEXT("Cubierto otra vez"), R.Step == EStep::Covered);
+	TestEqual(TEXT("Recién puesto (cubierto): nada afuera"), FArmedDummyRoutine().StepAlpha(), 0.f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Pelea
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaMeleeComboWindow, "Entropia.Melee.ComboWindow", EntropiaTestFlags::Flags)
+bool FEntropiaMeleeComboWindow::RunTest(const FString& Parameters)
+{
+	FEntropiaCombo Combo;
+	TestEqual(TEXT("Primer clic: golpe 1"), Combo.Next(10.f), 1);
+	TestEqual(TEXT("Clic demasiado pronto (0.1 s): no golpea"), Combo.Next(10.1f), 0);
+	TestEqual(TEXT("A 0.3 s: golpe 2"), Combo.Next(10.3f), 2);
+	TestEqual(TEXT("A 0.6 s: golpe 3"), Combo.Next(10.6f), 3);
+	TestEqual(TEXT("Después del 3: empieza otra vez"), Combo.Next(10.9f), 1);
+	TestEqual(TEXT("Tras 1 s sin clic: empieza otra vez"), Combo.Next(11.9f), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaTakedownKindChoice, "Entropia.Takedown.KindChoice", EntropiaTestFlags::Flags)
+bool FEntropiaTakedownKindChoice::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Por la espalda: romper el cuello"), UTakedownComponent::ChooseKind(true, false, false) == EEntropiaTakedown::NeckBreak);
+	TestTrue(TEXT("Sometido: romper el cuello"), UTakedownComponent::ChooseKind(false, false, true) == EEntropiaTakedown::NeckBreak);
+	TestTrue(TEXT("Congelado de frente: golpe con enfoque"), UTakedownComponent::ChooseKind(false, true, false) == EEntropiaTakedown::FocusStrike);
+	TestTrue(TEXT("Congelado y por la espalda: romper el cuello"), UTakedownComponent::ChooseKind(true, true, false) == EEntropiaTakedown::NeckBreak);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGrabCondition, "Entropia.Grab.Condition", EntropiaTestFlags::Flags)
+bool FEntropiaGrabCondition::RunTest(const FString& Parameters)
+{
+	const FVector Me = FVector::ZeroVector;
+	const FVector Forward(1.f, 0.f, 0.f);
+	TestTrue(TEXT("Enfrente a 1.2 m y de pie: sí"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(120.f, 0.f, 0.f), true));
+	TestFalse(TEXT("A 2 m: no alcanzas"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(200.f, 0.f, 0.f), true));
+	TestFalse(TEXT("A tu espalda: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(-120.f, 0.f, 0.f), true));
+	TestFalse(TEXT("Tirado: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(120.f, 0.f, 0.f), false));
+	TestTrue(TEXT("Un poco de lado (40°): sí"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(100.f, 84.f, 0.f), true));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b · Detener nivel 2 (The World)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaWorldStopWave, "Entropia.WorldStop.WaveShape", EntropiaTestFlags::Flags)
+bool FEntropiaWorldStopWave::RunTest(const FString& Parameters)
+{
+	const float Duration = 4.f;
+	const float Max = 6000.f;
+	TestEqual(TEXT("Al empezar la onda no ha salido"), EntropiaWorldStop::WaveRadius(0.f, Duration, Max), 0.f, 1.f);
+	TestEqual(TEXT("A 0.8 s llega al máximo"), EntropiaWorldStop::WaveRadius(0.8f, Duration, Max), Max, 1.f);
+	TestEqual(TEXT("A mitad se mantiene"), EntropiaWorldStop::WaveRadius(2.f, Duration, Max), Max, 1.f);
+	const float Returning = EntropiaWorldStop::WaveRadius(3.7f, Duration, Max);
+	TestTrue(TEXT("Al final regresa hacia ti"), Returning > 0.f && Returning < Max);
+	TestEqual(TEXT("Al terminar, cero"), EntropiaWorldStop::WaveRadius(4.f, Duration, Max), 0.f, 1.f);
+	TestEqual(TEXT("Destello en negativo al empezar"), EntropiaWorldStop::Flash(0.f), 1.f, 0.01f);
+	TestEqual(TEXT("El destello se apaga en 0.25 s"), EntropiaWorldStop::Flash(0.3f), 0.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaDilationWorldStopFreezes, "Entropia.Dilation.WorldStopFreezesOthers", EntropiaTestFlags::Flags)
+bool FEntropiaDilationWorldStopFreezes::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Mundo detenido: los demás cuentan como congelados"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.001f, false));
+	TestFalse(TEXT("Pero el jugador no"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.001f, true));
+	TestFalse(TEXT("Sobremarcha (0.25) no congela"), UTemporalDilationSubsystem::IsFrozenRate(1.f, 0.25f, false));
+	TestTrue(TEXT("Burbuja: congelado aunque el mundo vaya normal"), UTemporalDilationSubsystem::IsFrozenRate(0.f, 1.f, false));
 	return true;
 }
 

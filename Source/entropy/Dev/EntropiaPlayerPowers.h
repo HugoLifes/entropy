@@ -17,6 +17,12 @@ class USlowEyeComponent;
 class UTakedownComponent;
 class UTemporalAimComponent;
 class UTemporalDashComponent;
+class UEntropiaLocomotionComponent;
+class UEntropiaParkourComponent;
+class UEntropiaCoverComponent;
+class UEntropiaMeleeComponent;
+class UEntropiaGrabComponent;
+class UTemporalWorldStopComponent;
 class UTemporalEnergyComponent;
 class UTemporalHealthComponent;
 class UTemporalHUDWidget;
@@ -59,13 +65,17 @@ public:
 	/** Agrega al jugador todos los poderes (o usa los que ya tenga) y pone el HUD en pantalla. */
 	void EquipPlayer(APawn* Pawn);
 
-	/** E: un fantasma repite tus últimos segundos en bucle. */
+	/** H: un fantasma repite tus últimos segundos en bucle (antes era la E; la E ahora agarra). */
 	void CreateEcho();
 	/** G: borra los ecos. */
 	void ClearEchoes();
-	/** Q: burbuja frente a ti. */
+	/** Q: nivel 1 = burbuja frente a ti; nivel 2 = detener el tiempo de todo el mundo (The World). */
 	void SpawnBubble();
-	/** Clic izquierdo: remata si el HUD lo muestra; si no, detiene lo que está en la mira. */
+
+	/** N (prueba): cambia el nivel de Detener el tiempo entre 1 y 2. Hasta que haya progresión (remaches). */
+	void CycleTimeStopLevel();
+	int32 GetTimeStopLevel() const { return TimeStopLevel; }
+	/** Clic izquierdo: remata si el HUD lo muestra; si no, apuntando detiene lo que está en la mira y sin apuntar golpea. */
 	void PrimaryAction();
 	void TryDash();
 	void ToggleOverdrive();
@@ -85,6 +95,12 @@ public:
 	UPROPERTY() TObjectPtr<UObjectInversionComponent> Inversion;
 	UPROPERTY() TObjectPtr<UTimeStopComponent> TimeStop;
 	UPROPERTY() TObjectPtr<UTemporalDashComponent> Dash;
+	UPROPERTY() TObjectPtr<UEntropiaLocomotionComponent> Locomotion;
+	UPROPERTY() TObjectPtr<UEntropiaParkourComponent> Parkour;
+	UPROPERTY() TObjectPtr<UEntropiaCoverComponent> Cover;
+	UPROPERTY() TObjectPtr<UEntropiaMeleeComponent> Melee;
+	UPROPERTY() TObjectPtr<UEntropiaGrabComponent> Grab;
+	UPROPERTY() TObjectPtr<UTemporalWorldStopComponent> WorldStop;
 	UPROPERTY() TObjectPtr<USlowEyeComponent> SlowEye;
 	UPROPERTY() TObjectPtr<UTakedownComponent> Takedown;
 	UPROPERTY() TObjectPtr<UOverdriveComponent> Overdrive;
@@ -93,4 +109,6 @@ public:
 private:
 	UPROPERTY()
 	TArray<TObjectPtr<AEchoGhost>> Echoes;
+
+	int32 TimeStopLevel = 1;
 };

@@ -2,6 +2,8 @@
 
 #include "EntropiaRoomsComponent.h"
 #include "EntropiaPlayerPowers.h"
+#include "TemporalParkourRoom.h"
+#include "TemporalCombatRoom.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -95,6 +97,14 @@ void UEntropiaRoomsComponent::BuildAll(UEntropiaPlayerPowers* InPowers)
 	{
 		ReflexRoom = GetWorld()->SpawnActor<ATemporalReflexRoom>(ATemporalReflexRoom::StaticClass(), PlaceAt(ReflexRoomOffset), Params);
 	}
+	if (bSpawnParkourRoom)
+	{
+		ParkourRoom = GetWorld()->SpawnActor<ATemporalParkourRoom>(ATemporalParkourRoom::StaticClass(), PlaceAt(ParkourRoomOffset), Params);
+	}
+	if (bSpawnCombatRoom)
+	{
+		CombatRoom = GetWorld()->SpawnActor<ATemporalCombatRoom>(ATemporalCombatRoom::StaticClass(), PlaceAt(CombatRoomOffset), Params);
+	}
 }
 
 TArray<AActor*> UEntropiaRoomsComponent::GatherRewindables() const
@@ -137,6 +147,7 @@ void UEntropiaRoomsComponent::RewindAll(bool bStart)
 
 void UEntropiaRoomsComponent::GoToRoom(int32 Key)
 {
+	LastRoom = Key;
 	switch (Key)
 	{
 	case 0:
@@ -156,6 +167,22 @@ void UEntropiaRoomsComponent::GoToRoom(int32 Key)
 			Powers->EndForTeleport();
 			Powers->ClearEchoes();
 			ReflexRoom->TeleportPlayerHere();
+		}
+		return;
+	case 6:
+		if (ParkourRoom)
+		{
+			Powers->EndForTeleport();
+			Powers->ClearEchoes();
+			ParkourRoom->TeleportPlayerHere();
+		}
+		return;
+	case 7:
+		if (CombatRoom)
+		{
+			Powers->EndForTeleport();
+			Powers->ClearEchoes();
+			CombatRoom->TeleportPlayerHere();
 		}
 		return;
 	default:
@@ -191,15 +218,17 @@ void UEntropiaRoomsComponent::BackToStart()
 
 void UEntropiaRoomsComponent::RespawnPlayer()
 {
-	if (ReflexRoom)
+	if (LastRoom == 5 && ReflexRoom)
 	{
 		ReflexRoom->RespawnPlayer();
 		return;
 	}
-	BackToStart();
+	// En cualquier otra sala: de vuelta a su entrada, con la vida llena y un momento de protección.
+	GoToRoom(LastRoom);
 	if (Powers && Powers->Health)
 	{
 		Powers->Health->ResetHealth();
+		Powers->Health->SetInvulnerable(1.5f);
 	}
 }
 

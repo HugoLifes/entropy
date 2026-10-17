@@ -81,6 +81,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpStart();
 
+	/** ENTROPÍA: Espacio primero intenta el parkour (saltar una barda, subir, trepar, colgarse); si no hay nada, salta. */
+	virtual void Jump() override;
+
 	/** Handles jump pressed inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
