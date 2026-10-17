@@ -10,6 +10,7 @@
 #include "TemporalProjectile.h"
 #include "TakedownComponent.h"
 #include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
 #include "TemporalTrailComponent.h"
 
 #include "Animation/AnimInstance.h"
@@ -105,6 +106,11 @@ bool UTemporalDashComponent::TryDash()
 	if (!CanDash(SinceLastDash, Cooldown, bFalling, bAirDashUsed))
 	{
 		return false;
+	}
+	// Desde la cobertura, el dash te despega primero (si no, solo podrías ir a lo largo de la pared).
+	if (UEntropiaCoverComponent* Cover = Character->FindComponentByClass<UEntropiaCoverComponent>(); Cover && Cover->IsInCover())
+	{
+		Cover->Exit();
 	}
 
 	DashDirection = ComputeDashDirection(Character->GetLastMovementInputVector(), Character->GetActorForwardVector());

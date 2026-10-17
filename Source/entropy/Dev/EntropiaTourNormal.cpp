@@ -3,6 +3,7 @@
 #include "EntropiaTourComponent.h"
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
@@ -618,6 +619,51 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		}
 	});
 	Add(TEXT("orilla_suelto"), 0.3f, [LogHang] { LogHang(TEXT("suelto")); });
+	// Fase 3b · Cobertura: barda baja (agachado, asomarse levantándose) y muro alto (esquina, asomarse de lado).
+	auto LogCover = [this, Player](const TCHAR* Name)
+	{
+		const FVector Local = Player() && Rooms->ParkourRoom ? Rooms->ParkourRoom->GetActorTransform().InverseTransformPosition(Player()->GetActorLocation()) : FVector::ZeroVector;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s cubierto=%d tipo=%d esquina=%d agachado=%d asomado=%d x=%.0f y=%.0f"), Name,
+			Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0, Powers->Cover ? static_cast<int32>(Powers->Cover->GetKind()) : -1,
+			Powers->Cover ? Powers->Cover->GetCornerSide() : 0, Powers->Locomotion && Powers->Locomotion->IsCrouched() ? 1 : 0,
+			Powers->Cover && Powers->Cover->IsPeeking() ? 1 : 0, Local.X, Local.Y);
+	};
+	Add(TEXT("cubrirse_bajo"), 0.8f, [this, LogCover]
+	{
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(490.f, -450.f, 98.f)); }
+		if (Powers->Cover) { Powers->Cover->TryEnter(); }
+	});
+	Add(TEXT("cubierto_moverse"), 0.8f, [this, Hold, LogCover]
+	{
+		LogCover(TEXT("cubrirse_bajo"));
+		if (Rooms->ParkourRoom) { Hold(-Rooms->ParkourRoom->GetActorRightVector()); }
+	});
+	Add(TEXT("asomarse_bajo"), 0.8f, [this, Hold, LogCover]
+	{
+		Hold(FVector::ZeroVector);
+		LogCover(TEXT("cubierto_moverse"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+	});
+	Add(TEXT("cubrirse_alto"), 0.8f, [this, LogCover]
+	{
+		LogCover(TEXT("asomarse_bajo"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Cover) { Powers->Cover->Exit(); }
+		if (Rooms->ParkourRoom) { Rooms->ParkourRoom->PlacePlayer(FVector(640.f, 480.f, 98.f)); }
+		if (Powers->Cover) { Powers->Cover->TryEnter(); }
+	});
+	Add(TEXT("asomarse_esquina"), 0.8f, [this, LogCover]
+	{
+		LogCover(TEXT("cubrirse_alto"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+	});
+	Add(TEXT("salir_cobertura"), 0.5f, [this, LogCover]
+	{
+		LogCover(TEXT("asomarse_esquina"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Cover) { Powers->Cover->Exit(); }
+	});
+	Add(TEXT("salir_revisa"), 0.3f, [LogCover] { LogCover(TEXT("salir_cobertura")); });
 	Add(TEXT("sala2"), 1.6f, [this, Player]
 	{
 		Rooms->GoToRoom(2);

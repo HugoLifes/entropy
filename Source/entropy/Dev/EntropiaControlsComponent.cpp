@@ -3,6 +3,7 @@
 #include "EntropiaControlsComponent.h"
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -98,7 +99,7 @@ void UEntropiaControlsComponent::ShowHelp() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash (mantener: correr) · C: agacharse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: detener · Shift: dash (mantener: correr) · C: agacharse o cubrirse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 0: volver a las cajas"));
 	}
@@ -273,6 +274,16 @@ void UEntropiaControlsComponent::OnCrouch()
 	if (Powers->Parkour && Powers->Parkour->IsHanging())
 	{
 		Powers->Parkour->Drop();
+		return;
+	}
+	// Cubierto: C te despega. Junto a una pared o barda: te cubres. Si no: te agachas.
+	if (Powers->Cover && Powers->Cover->IsInCover())
+	{
+		Powers->Cover->Exit();
+		return;
+	}
+	if (Powers->Cover && Powers->Cover->TryEnter())
+	{
 		return;
 	}
 	if (Powers->Locomotion)

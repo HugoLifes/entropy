@@ -2,6 +2,9 @@
 
 #include "EntropiaTourComponent.h"
 #include "EntropiaParkourComponent.h"
+#include "EntropiaCoverComponent.h"
+#include "TemporalPhysicsLab.h"
+#include "TemporalBreakable.h"
 #include "EntropiaLocomotionComponent.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
@@ -477,6 +480,34 @@ void UEntropiaTourComponent::BuildChaosSteps()
 	{
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tras_morir_colgado ocupado=%d modo=%d vida=%.0f"),
 			Powers->Parkour && Powers->Parkour->IsBusy() ? 1 : 0, Movement(), Powers->Health ? Powers->Health->Health : -1.f);
+	});
+	// Fase 3b · Cobertura que se rompe: cubierto detrás de la caja rompible de la sala 4, se rompe y sales sin quedar pegado.
+	Add(TEXT("cobertura_rompible"), 0.6f, [this]
+	{
+		Rooms->GoToRoom(4);
+		if (Rooms->PhysicsLab)
+		{
+			if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+			{
+				const FVector Spot = Rooms->PhysicsLab->GetActorTransform().TransformPosition(FVector(1000.f, -400.f, 98.f));
+				Pawn->SetActorLocationAndRotation(Spot, FRotator(0.f, Rooms->PhysicsLab->GetActorRotation().Yaw - 90.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+			}
+		}
+		const bool bIn = Powers->Cover && Powers->Cover->TryEnter();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_rompible entro=%d"), bIn ? 1 : 0);
+	});
+	Add(TEXT("cobertura_se_rompe"), 0.6f, [this]
+	{
+		for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
+		{
+			It->Break(It->GetActorLocation(), FVector::UpVector);
+		}
+	});
+	Add(TEXT("cobertura_rompible_revisa"), 0.3f, [this]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_rota cubierto=%d plano=%d"), Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0,
+			Character && Character->GetCharacterMovement()->bConstrainToPlane ? 1 : 0);
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

@@ -21,6 +21,7 @@
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaFalls.h"
 #include "EntropiaParkour.h"
+#include "EntropiaCoverComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -696,6 +697,16 @@ bool FEntropiaParkourLedgeReach::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Borde a 1.5 m sobre los pies: lo alcanzas"), EntropiaParkour::CanGrabLedge(150.f));
 	TestFalse(TEXT("Borde a 1 m: muy bajo, mejor subir"), EntropiaParkour::CanGrabLedge(100.f));
 	TestFalse(TEXT("Borde a 2.6 m: no llegan las manos"), EntropiaParkour::CanGrabLedge(260.f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaCoverKind, "Entropia.Cover.Kind", EntropiaTestFlags::Flags)
+bool FEntropiaCoverKind::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("60 cm: no tapa"), EntropiaCover::KindForHeight(60.f) == EEntropiaCover::None);
+	TestTrue(TEXT("90 cm: cobertura baja (agachado)"), EntropiaCover::KindForHeight(90.f) == EEntropiaCover::Low);
+	TestTrue(TEXT("150 cm: todavía baja"), EntropiaCover::KindForHeight(150.f) == EEntropiaCover::Low);
+	TestTrue(TEXT("200 cm: cobertura alta (de pie)"), EntropiaCover::KindForHeight(200.f) == EEntropiaCover::High);
 	return true;
 }
 

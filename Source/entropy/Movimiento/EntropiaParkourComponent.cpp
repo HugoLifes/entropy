@@ -3,6 +3,7 @@
 #include "EntropiaParkourComponent.h"
 #include "EntropiaAnimationSet.h"
 #include "EntropiaLocomotionComponent.h"
+#include "EntropiaCoverComponent.h"
 #include "InverseStepComponent.h"
 
 #include "Components/CapsuleComponent.h"
@@ -176,6 +177,10 @@ bool UEntropiaParkourComponent::TryStart()
 		return Move->IsFalling() && TryGrabLedge(false);
 	}
 
+	if (UEntropiaCoverComponent* Cover = Character->FindComponentByClass<UEntropiaCoverComponent>(); Cover && Cover->IsInCover())
+	{
+		Cover->Exit();
+	}
 	UEntropiaLocomotionComponent* Locomotion = Character->FindComponentByClass<UEntropiaLocomotionComponent>();
 	if (Locomotion && Locomotion->IsCrouched())
 	{
