@@ -21,6 +21,7 @@ class UEntropiaLocomotionComponent;
 class UEntropiaParkourComponent;
 class UEntropiaCoverComponent;
 class UEntropiaMeleeComponent;
+class UEntropiaGrabComponent;
 class UTemporalEnergyComponent;
 class UTemporalHealthComponent;
 class UTemporalHUDWidget;
@@ -63,7 +64,7 @@ public:
 	/** Agrega al jugador todos los poderes (o usa los que ya tenga) y pone el HUD en pantalla. */
 	void EquipPlayer(APawn* Pawn);
 
-	/** E: un fantasma repite tus últimos segundos en bucle. */
+	/** H: un fantasma repite tus últimos segundos en bucle (antes era la E; la E ahora agarra). */
 	void CreateEcho();
 	/** G: borra los ecos. */
 	void ClearEchoes();
@@ -93,6 +94,7 @@ public:
 	UPROPERTY() TObjectPtr<UEntropiaParkourComponent> Parkour;
 	UPROPERTY() TObjectPtr<UEntropiaCoverComponent> Cover;
 	UPROPERTY() TObjectPtr<UEntropiaMeleeComponent> Melee;
+	UPROPERTY() TObjectPtr<UEntropiaGrabComponent> Grab;
 	UPROPERTY() TObjectPtr<USlowEyeComponent> SlowEye;
 	UPROPERTY() TObjectPtr<UTakedownComponent> Takedown;
 	UPROPERTY() TObjectPtr<UOverdriveComponent> Overdrive;

@@ -14,6 +14,7 @@ class UTemporalAimComponent;
 class UTemporalHealthComponent;
 class UTemporalDashComponent;
 class UTakedownComponent;
+class UEntropiaGrabComponent;
 
 UCLASS()
 class ENTROPY_API UTemporalHUDWidget : public UUserWidget
@@ -26,6 +27,7 @@ public:
 	void SetHealth(UTemporalHealthComponent* InHealth) { Health = InHealth; }
 	void SetDash(UTemporalDashComponent* InDash) { Dash = InDash; }
 	void SetTakedown(UTakedownComponent* InTakedown) { Takedown = InTakedown; }
+	void SetGrab(UEntropiaGrabComponent* InGrab);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -40,4 +42,5 @@ private:
 	TWeakObjectPtr<UTemporalHealthComponent> Health;
 	TWeakObjectPtr<UTemporalDashComponent> Dash;
 	TWeakObjectPtr<UTakedownComponent> Takedown;
+	TWeakObjectPtr<UEntropiaGrabComponent> Grab;
 };

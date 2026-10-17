@@ -4,6 +4,7 @@
 #include "EntropiaLocomotionComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
+#include "EntropiaGrabComponent.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
 #include "TemporalFXSubsystem.h"
@@ -71,7 +72,8 @@ void UEntropiaControlsComponent::BindKeys(UInputComponent* Input, UEntropiaPlaye
 	Input->BindKey(EKeys::F, IE_Released, this, &UEntropiaControlsComponent::OnInverseReleased);
 	Input->BindKey(EKeys::R, IE_Pressed, this, &UEntropiaControlsComponent::OnRewindPressed);
 	Input->BindKey(EKeys::R, IE_Released, this, &UEntropiaControlsComponent::OnRewindReleased);
-	Input->BindKey(EKeys::E, IE_Pressed, this, &UEntropiaControlsComponent::OnEcho);
+	Input->BindKey(EKeys::E, IE_Pressed, this, &UEntropiaControlsComponent::OnGrab);
+	Input->BindKey(EKeys::H, IE_Pressed, this, &UEntropiaControlsComponent::OnEcho);
 	Input->BindKey(EKeys::G, IE_Pressed, this, &UEntropiaControlsComponent::OnClearEchoes);
 	Input->BindKey(EKeys::Q, IE_Pressed, this, &UEntropiaControlsComponent::OnBubble);
 	Input->BindKey(EKeys::T, IE_Pressed, this, &UEntropiaControlsComponent::OnRespawnCubes);
@@ -100,7 +102,7 @@ void UEntropiaControlsComponent::ShowHelp() const
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1000, 40.f, FColor::Cyan,
-			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: golpe (apuntando: detener) · Shift: dash (mantener: correr) · C: agacharse o cubrirse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
+			TEXT("ENTROPIA · Clic der.: apuntar · Clic izq.: golpe (apuntando: detener) · Shift: dash (mantener: correr) · C: agacharse o cubrirse · F (mantener): Paso Inverso · R (mantener): invertir lo que apuntas · Ctrl+R: todo · V: Sobremarcha · E: agarrar · H: eco · G: borrar ecos · Q: burbuja · T: soltar cajas"));
 		GEngine->AddOnScreenDebugMessage(1002, 40.f, FColor::Green,
 			TEXT("SALAS · 1: Eco · 2: Inverso · 3: Brecha · 4: Fisica (Z dispara · X bala invertida · B romper) · 5: Reflejos · 6: Parkour · 7: Combate · 0: volver a las cajas"));
 	}
@@ -271,6 +273,23 @@ void UEntropiaControlsComponent::OnSprintReleased()
 	if (Powers->Locomotion)
 	{
 		Powers->Locomotion->SetSprint(false);
+	}
+}
+
+void UEntropiaControlsComponent::OnGrab()
+{
+	// E: agarrar (llave, desarmar, someter); si ya lo tienes, lo sueltas con un empujón.
+	if (!Powers->Grab)
+	{
+		return;
+	}
+	if (Powers->Grab->IsHolding())
+	{
+		Powers->Grab->Release(true);
+	}
+	else
+	{
+		Powers->Grab->TryGrab();
 	}
 }
 

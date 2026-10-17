@@ -24,6 +24,7 @@
 #include "EntropiaCoverComponent.h"
 #include "TemporalArmedDummy.h"
 #include "EntropiaMeleeComponent.h"
+#include "EntropiaGrabComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -759,6 +760,19 @@ bool FEntropiaTakedownKindChoice::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Sometido: romper el cuello"), UTakedownComponent::ChooseKind(false, false, true) == EEntropiaTakedown::NeckBreak);
 	TestTrue(TEXT("Congelado de frente: golpe con enfoque"), UTakedownComponent::ChooseKind(false, true, false) == EEntropiaTakedown::FocusStrike);
 	TestTrue(TEXT("Congelado y por la espalda: romper el cuello"), UTakedownComponent::ChooseKind(true, true, false) == EEntropiaTakedown::NeckBreak);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGrabCondition, "Entropia.Grab.Condition", EntropiaTestFlags::Flags)
+bool FEntropiaGrabCondition::RunTest(const FString& Parameters)
+{
+	const FVector Me = FVector::ZeroVector;
+	const FVector Forward(1.f, 0.f, 0.f);
+	TestTrue(TEXT("Enfrente a 1.2 m y de pie: sí"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(120.f, 0.f, 0.f), true));
+	TestFalse(TEXT("A 2 m: no alcanzas"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(200.f, 0.f, 0.f), true));
+	TestFalse(TEXT("A tu espalda: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(-120.f, 0.f, 0.f), true));
+	TestFalse(TEXT("Tirado: no"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(120.f, 0.f, 0.f), false));
+	TestTrue(TEXT("Un poco de lado (40°): sí"), UEntropiaGrabComponent::CanGrab(Me, Forward, FVector(100.f, 84.f, 0.f), true));
 	return true;
 }
 

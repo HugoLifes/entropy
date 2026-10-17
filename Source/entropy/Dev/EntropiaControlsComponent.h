@@ -1,7 +1,7 @@
 // ENTROPÍA · Teclas del banco de pruebas (Dev)
 // Conecta cada tecla con su poder o su sala (BindKey, sin Enhanced Input todavía) y muestra la ayuda en pantalla.
 //   Clic der. apuntar · Clic izq. Detener o rematar · Shift tocar = dash, mantener = correr · C agacharse · F Paso Inverso · R invertir · Ctrl+R todo ·
-//   V Sobremarcha · E eco · G borrar ecos · Q burbuja · T soltar cajas · 1-5 salas · 0 inicio · Z/X/B sala 4
+//   V Sobremarcha · E agarrar · H eco · G borrar ecos · Q burbuja · T soltar cajas · 1-5 salas · 0 inicio · Z/X/B sala 4
 
 #pragma once
 
@@ -53,6 +53,7 @@ private:
 	void OnDash();
 	void OnSprintReleased();
 	void OnCrouch();
+	void OnGrab();
 
 	UPROPERTY()
 	TObjectPtr<UEntropiaPlayerPowers> Powers;

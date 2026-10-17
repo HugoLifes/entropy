@@ -7,6 +7,7 @@
 #include "TemporalCombatRoom.h"
 #include "TemporalArmedDummy.h"
 #include "EntropiaMeleeComponent.h"
+#include "EntropiaGrabComponent.h"
 #include "TemporalParkourRoom.h"
 #include "EntropiaPlayerPowers.h"
 #include "EntropiaRoomsComponent.h"
@@ -753,6 +754,57 @@ void UEntropiaTourComponent::BuildNormalSteps()
 	Add(TEXT("golpe_enfoque_suelta"), 1.f, [this, M]
 	{
 		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 3b · Agarrar al dummy armado A de la sala 7 por detrás: lo desarmas y lo sometes; luego le rompes el cuello.
+	// Después agarras al B y lo sueltas con un empujón (E otra vez).
+	auto Dummy = [this](int32 Index) -> ATemporalArmedDummy*
+	{
+		return Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().IsValidIndex(Index) ? Rooms->CombatRoom->GetDummies()[Index].Get() : nullptr;
+	};
+	auto BehindDummy = [this, Dummy, StandAt](int32 Index)
+	{
+		if (ATemporalArmedDummy* Target = Dummy(Index))
+		{
+			StandAt(Target->GetActorLocation() - Target->GetActorForwardVector() * 110.f, Target->GetActorLocation());
+		}
+	};
+	Add(TEXT("agarrar_prepara"), 0.5f, [this, BehindDummy]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		BehindDummy(0);
+	});
+	Add(TEXT("agarrar_desarmar"), 0.8f, [this, Dummy]
+	{
+		const bool bOk = Powers->Grab && Powers->Grab->TryGrab();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarrar ok=%d armado=%d sometido=%d"), bOk ? 1 : 0,
+			Dummy(0) && Dummy(0)->IsArmed() ? 1 : 0, Dummy(0) && Dummy(0)->IsSubdued() ? 1 : 0);
+	});
+	Add(TEXT("sometido_cuello"), 1.4f, [this]
+	{
+		Powers->PrimaryAction();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sometido_cuello tipo=%d"), Powers->Takedown ? static_cast<int32>(Powers->Takedown->GetLastKind()) : -1);
+	});
+	Add(TEXT("sometido_revisa"), 0.3f, [this, Dummy]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sometido_fin tirado=%d agarrando=%d modo=%d"), Dummy(0) && Dummy(0)->IsKnockedDown() ? 1 : 0,
+			Powers->Grab && Powers->Grab->IsHolding() ? 1 : 0, Character ? static_cast<int32>(Character->GetCharacterMovement()->MovementMode) : -1);
+	});
+	Add(TEXT("agarrar_soltar"), 0.6f, [this, BehindDummy]
+	{
+		BehindDummy(1);
+		if (Powers->Grab) { Powers->Grab->TryGrab(); }
+	});
+	Add(TEXT("soltar_empujon"), 0.4f, [this]
+	{
+		if (Powers->Grab && Powers->Grab->IsHolding()) { Powers->Grab->Release(true); }
+	});
+	Add(TEXT("soltar_revisa"), 0.3f, [this, Dummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR soltar sometido=%d aturdido=%d desarmado=%d"), Dummy(1) && Dummy(1)->IsSubdued() ? 1 : 0,
+			Dummy(1) && Dummy(1)->IsStaggered() ? 1 : 0, Dummy(1) && !Dummy(1)->IsArmed() ? 1 : 0);
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("sala2"), 1.6f, [this, Player]

@@ -163,6 +163,8 @@ void ATemporalMannequin::KnockDown(const FVector& Direction, float Impulse)
 	GetCharacterMovement()->DisableMovement();
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	// El cuerpo que cae no empuja la cámara (si no, se mete en tu cara al rematar de cerca).
+	Body->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	// Así la burbuja de Brecha también lo detecta tirado (la cápsula ya no choca).
 	Body->SetGenerateOverlapEvents(true);
 	Body->SetSimulatePhysics(true);

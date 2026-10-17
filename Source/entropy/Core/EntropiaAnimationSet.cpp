@@ -28,7 +28,8 @@ namespace EntropiaAnimDefaults
 	const TCHAR* HitLight = TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Lgt_01.MM_HitReact_Front_Lgt_01");
 	const TCHAR* HitMedium = TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Med_01.MM_HitReact_Front_Med_01");
 	const TCHAR* HitHeavy = TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Hvy_01.MM_HitReact_Front_Hvy_01");
-	const TCHAR* DeathFront = TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Front_01.MM_Death_Front_01");
+	// "Death_Back" = le pegan por la espalda y cae hacia adelante (lejos de ti al romperle el cuello).
+	const TCHAR* DeathBack = TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Back_01.MM_Death_Back_01");
 	const TCHAR* PistolAim = TEXT("/Game/Characters/Mannequins/Anims/Pistol/MF_Pistol_Idle_ADS.MF_Pistol_Idle_ADS");
 	const TCHAR* PistolFire = TEXT("/Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Fire.MM_Pistol_Fire");
 
@@ -70,7 +71,7 @@ UEntropiaAnimationSet::UEntropiaAnimationSet()
 	Grab = Make(EntropiaAnimDefaults::Attack1, 0.f, 0.25f, true);
 
 	VictimHit = Make(EntropiaAnimDefaults::HitLight, 1.2f);
-	VictimNeckBreak = Make(EntropiaAnimDefaults::DeathFront, 1.f);
+	VictimNeckBreak = Make(EntropiaAnimDefaults::DeathBack, 1.f);
 	VictimSubdued = Make(EntropiaAnimDefaults::HitHeavy, 0.f, 0.35f, true);
 	VictimDisarmed = Make(EntropiaAnimDefaults::HitMedium, 1.f);
 	DummyAim = Make(EntropiaAnimDefaults::PistolAim, 1.f, 0.f, true);

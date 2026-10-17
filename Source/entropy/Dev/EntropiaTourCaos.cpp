@@ -3,6 +3,9 @@
 #include "EntropiaTourComponent.h"
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
+#include "EntropiaGrabComponent.h"
+#include "TemporalCombatRoom.h"
+#include "TemporalArmedDummy.h"
 #include "TemporalPhysicsLab.h"
 #include "TemporalBreakable.h"
 #include "EntropiaLocomotionComponent.h"
@@ -510,6 +513,51 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_rota cubierto=%d plano=%d"), Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0,
 			Character && Character->GetCharacterMovement()->bConstrainToPlane ? 1 : 0);
+	});
+	// Fase 3b · Agarre raro: agarrar a un congelado, detenerlo en la mano, morir agarrando y teletransportarse agarrando.
+	auto GrabDummy = [this](int32 Index)
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().IsValidIndex(Index) ? Rooms->CombatRoom->GetDummies()[Index].Get() : nullptr;
+		APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Target && Pawn)
+		{
+			const FVector Spot = Target->GetActorLocation() - Target->GetActorForwardVector() * 110.f;
+			Pawn->SetActorLocationAndRotation(Spot, FRotator(0.f, Target->GetActorRotation().Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		return Target;
+	};
+	Add(TEXT("agarre_congelado"), 0.6f, [this, GrabDummy]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (ATemporalArmedDummy* Target = GrabDummy(0))
+		{
+			if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+		}
+		const bool bOk = Powers->Grab && Powers->Grab->TryGrab();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_congelado ok=%d"), bOk ? 1 : 0);
+	});
+	Add(TEXT("agarre_y_muere"), 0.5f, [this]
+	{
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("agarre_y_muere_revisa"), 0.4f, [this]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_tras_morir agarrando=%d modo=%d detenidos=%d"), Powers->Grab && Powers->Grab->IsHolding() ? 1 : 0,
+			Character ? static_cast<int32>(Character->GetCharacterMovement()->MovementMode) : -1, Powers->TimeStop ? Powers->TimeStop->NumStopped() : -1);
+	});
+	Add(TEXT("agarre_y_teletransporte"), 0.4f, [this, GrabDummy]
+	{
+		GrabDummy(1);
+		if (Powers->Grab) { Powers->Grab->TryGrab(); }
+		Rooms->GoToRoom(4);
+	});
+	Add(TEXT("agarre_teletransporte_revisa"), 0.4f, [this]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR agarre_tras_teletransporte agarrando=%d modo=%d"), Powers->Grab && Powers->Grab->IsHolding() ? 1 : 0,
+			Character ? static_cast<int32>(Character->GetCharacterMovement()->MovementMode) : -1);
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

@@ -5,6 +5,7 @@
 #include "EntropiaParkourComponent.h"
 #include "EntropiaCoverComponent.h"
 #include "EntropiaMeleeComponent.h"
+#include "EntropiaGrabComponent.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -89,6 +90,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 		Parkour = TemporalFX::FindOrAddComponent<UEntropiaParkourComponent>(Pawn, TEXT("Parkour"));
 		Cover = TemporalFX::FindOrAddComponent<UEntropiaCoverComponent>(Pawn, TEXT("Cover"));
 		Melee = TemporalFX::FindOrAddComponent<UEntropiaMeleeComponent>(Pawn, TEXT("Melee"));
+		Grab = TemporalFX::FindOrAddComponent<UEntropiaGrabComponent>(Pawn, TEXT("Grab"));
 		Aim = TemporalFX::FindOrAddComponent<UTemporalAimComponent>(Pawn, TEXT("Aim"));
 		Inversion = TemporalFX::FindOrAddComponent<UObjectInversionComponent>(Pawn, TEXT("PlayerObjectInversion"));
 		TimeStop = TemporalFX::FindOrAddComponent<UTimeStopComponent>(Pawn, TEXT("TimeStop"));
@@ -108,6 +110,7 @@ void UEntropiaPlayerPowers::EquipPlayer(APawn* Pawn)
 				HUD->SetHealth(Health);
 				HUD->SetDash(Dash);
 				HUD->SetTakedown(Takedown);
+				HUD->SetGrab(Grab);
 				HUD->AddToViewport();
 			}
 		}
@@ -259,6 +262,10 @@ void UEntropiaPlayerPowers::EndForTeleport()
 	if (Cover)
 	{
 		Cover->Exit();
+	}
+	if (Grab && Grab->IsHolding())
+	{
+		Grab->Release(false);
 	}
 	if (InverseStep)
 	{
