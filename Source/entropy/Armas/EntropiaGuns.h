@@ -78,6 +78,9 @@ namespace EntropiaGuns
 	 */
 	ENTROPY_API float StepDistance(float Speed, float Dt, float RealDt, float Traveled, float FreeTravel);
 
+	/** Cuánto sube de verdad la cámara con un retroceso de Kick grados, mirando a Pitch (0-360 o -180..180), sin pasar de MaxPitch. */
+	ENTROPY_API float RecoilApplied(float Pitch, float Kick, float MaxPitch);
+
 	/** Cuántas balas viejas hay que quitar para no pasar del tope. */
 	ENTROPY_API int32 OldestToEvict(int32 NumLive, int32 Cap);
 }

@@ -95,7 +95,7 @@ void ATemporalShootingRoom::Build()
 	}
 
 	// Un muro rompible frente al dummy de 18 m (las balas lo atraviesan y, al invertirlas, se rearma).
-	if (ATemporalBreakable* Panel = AddBreakable(FVector(1650.f, 450.f, 100.f), FVector(40.f, 300.f, 200.f), FIntVector(1, 3, 2), EntropiaShootingRoom::PanelColor))
+	if (ATemporalBreakable* Panel = AddBreakable(FVector(1620.f, 450.f, 100.f), FVector(100.f, 300.f, 200.f), FIntVector(1, 3, 2), EntropiaShootingRoom::PanelColor))
 	{
 		Breakables.Add(Panel);
 	}

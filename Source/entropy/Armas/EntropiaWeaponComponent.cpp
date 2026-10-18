@@ -43,6 +43,8 @@ void UEntropiaWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	Aim = GetOwner()->FindComponentByClass<UTemporalAimComponent>();
+	// Referencia fuerte: así DA_Armas no se recolecta y se vuelve a leer del disco a media pelea.
+	WeaponSet = const_cast<UEntropiaWeaponSet*>(UEntropiaWeaponSet::Get());
 	for (int32 i = 0; i < NumWeapons; ++i)
 	{
 		States[i].Init(StatsOf(i));
@@ -58,7 +60,7 @@ void UEntropiaWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 const FEntropiaWeaponStats& UEntropiaWeaponComponent::StatsOf(int32 Index) const
 {
-	const UEntropiaWeaponSet* Set = UEntropiaWeaponSet::Get();
+	const UEntropiaWeaponSet* Set = WeaponSet ? WeaponSet.Get() : UEntropiaWeaponSet::Get();
 	return Index == 1 ? Set->Rifle : Set->Revolver;
 }
 
@@ -180,8 +182,8 @@ bool UEntropiaWeaponComponent::FireOnce(bool bJustPressed)
 	const FEntropiaWeaponStats& Stats = CurrentStats();
 	if (State.Ammo <= 0 && !State.IsReloading())
 	{
-		// Clic con el arma vacía: recarga sola.
-		if (bJustPressed)
+		// Clic con el arma vacía (o el fusil con el clic mantenido): recarga sola.
+		if (bJustPressed || Stats.bAutomatic)
 		{
 			Reload();
 		}
@@ -262,10 +264,13 @@ bool UEntropiaWeaponComponent::FireOnce(bool bJustPressed)
 		if (AController* Controller = Pawn->GetController())
 		{
 			FRotator Rotation = Controller->GetControlRotation();
-			Rotation.Pitch += Stats.RecoilPitch;
+			const APlayerController* PC = Cast<APlayerController>(Controller);
+			const float MaxPitch = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->ViewPitchMax : 89.9f;
+			const float Kick = EntropiaGuns::RecoilApplied(Rotation.Pitch, Stats.RecoilPitch, MaxPitch);
+			Rotation.Pitch = FRotator::NormalizeAxis(Rotation.Pitch) + Kick;
 			Rotation.Yaw += FMath::FRandRange(-Stats.RecoilYaw, Stats.RecoilYaw);
 			Controller->SetControlRotation(Rotation);
-			RecoilDebt += Stats.RecoilPitch;
+			RecoilDebt += Kick;
 		}
 	}
 	if (!Stats.bAutomatic)
@@ -490,6 +495,12 @@ void UEntropiaWeaponComponent::UpdatePose(float DeltaTime)
 	OneShotLeft = FMath::Max(0.f, OneShotLeft - DeltaTime);
 	if (WantsPose())
 	{
+		// Si otra animación le quitó el lugar a la pose (un golpe recibido, por ejemplo), se vuelve a poner.
+		if (bAimPosePlaying && OneShotLeft <= 0.f)
+		{
+			const FEntropiaAnimSlot* AimSlot = PoseSlot(EPose::Aim, Current);
+			bAimPosePlaying = AimSlot && AimSlot->Anim.IsNull() ? true : (AimSlot && EntropiaAnim::IsPlaying(Cast<ACharacter>(GetOwner()), *AimSlot));
+		}
 		if (!bAimPosePlaying && OneShotLeft <= 0.f)
 		{
 			if (const FEntropiaAnimSlot* Slot = PoseSlot(EPose::Aim, Current))

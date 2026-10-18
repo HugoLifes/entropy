@@ -10,6 +10,7 @@
 #include "TemporalArmedDummy.generated.h"
 
 class UStaticMeshComponent;
+class ATemporalProjectile;
 
 /** La rutina de asomarse y disparar. Lógica pura (probada). */
 struct ENTROPY_API FArmedDummyRoutine
@@ -66,6 +67,8 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") float BulletSpeed = 1800.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") float BulletDamage = 20.f;
+	/** Balas suyas vivas como máximo (al pasar, desaparece la más vieja; como las torretas). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia") int32 MaxBullets = 8;
 
 	bool IsArmed() const { return bArmed; }
 	int32 GetTotalShots() const { return TotalShots; }
@@ -99,6 +102,7 @@ private:
 	/** Giro del modelo dentro de la pistola (el cubo apunta a +X; el modelo, a -Y). */
 	FQuat GunModelRotation = FQuat::Identity;
 	bool bGunModel = false;
+	TArray<TWeakObjectPtr<ATemporalProjectile>> MyBullets;
 
 	FArmedDummyRoutine Routine;
 	FVector CoverHome = FVector::ZeroVector;

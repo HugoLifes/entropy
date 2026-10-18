@@ -11,6 +11,8 @@
 #include "Engine/StaticMesh.h"
 #include "Misc/DelayedAutoRegister.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 #include "UObject/SavePackage.h"
 #endif
 
@@ -154,9 +156,20 @@ namespace EntropiaWeaponSetEditor
 		}
 	}
 
-	/** Las texturas de 4K de Fab no caben en 4 GB de video: se limitan una vez (y se guardan así). */
+	/** Marca que deja Tools/import-armas.ps1: hay modelos recién importados que revisar. */
+	FString PendingMarker()
+	{
+		return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ArmasFab.pendiente"));
+	}
+
+	/** Las texturas de 4K de Fab no caben en 4 GB de video: se limitan una vez (y se guardan así). Solo después de importar. */
 	void LimitImportedTextures()
 	{
+		if (!FPaths::FileExists(PendingMarker()))
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: ArmasFab sin cambios (no se revisa)"));
+			return;
+		}
 		IAssetRegistry& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
 		Registry.ScanPathsSynchronous({ FString(FabFolder) }, /*bForceRescan=*/false);
 		TArray<FAssetData> Assets;
@@ -192,6 +205,8 @@ namespace EntropiaWeaponSetEditor
 			UE_LOG(LogTemp, Display, TEXT("ENTROPIA: textura limitada a %d: %s (%s)"), Limit, *Texture->GetPathName(),
 				SaveAsset(Texture) ? TEXT("guardada") : TEXT("sin guardar"));
 		}
+		IFileManager::Get().Delete(*PendingMarker());
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA: ArmasFab revisado (texturas y Nanite)"));
 	}
 
 	FDelayedAutoRegisterHelper GCreateEntropiaWeaponSet(EDelayedRegisterRunPhase::EndOfEngineInit, []

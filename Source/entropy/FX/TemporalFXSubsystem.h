@@ -85,6 +85,9 @@ public:
 	void SetField(const UObject* Owner, const FVector& Center, float Radius, float Strength);
 	void ClearField(const UObject* Owner);
 
+	/** Un material sólido compartido por color (las balas: el fusil dispara 10 por segundo y no hace falta uno por bala). */
+	UMaterialInstanceDynamic* GetSharedSolid(const FLinearColor& Color);
+
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
@@ -104,6 +107,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> Material;
+
+	UPROPERTY()
+	TMap<uint32, TObjectPtr<UMaterialInstanceDynamic>> SharedSolids;
 
 	UPROPERTY()
 	TObjectPtr<AActor> HostActor;

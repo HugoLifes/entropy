@@ -203,6 +203,17 @@ void ATemporalArmedDummy::FireAtPlayer()
 		Bullet->Launch(Muzzle, (Target - Muzzle).GetSafeNormal(), this);
 		TemporalFX::Burst(this, Muzzle, FLinearColor(1.f, 0.55f, 0.1f), 0.3f);
 		++TotalShots;
+		// Tope de balas (las incrustadas no se quedan para siempre).
+		MyBullets.RemoveAll([](const TWeakObjectPtr<ATemporalProjectile>& Mine) { return !Mine.IsValid(); });
+		MyBullets.Add(Bullet);
+		while (MyBullets.Num() > FMath::Max(MaxBullets, 1))
+		{
+			if (ATemporalProjectile* Oldest = MyBullets[0].Get())
+			{
+				Oldest->Destroy();
+			}
+			MyBullets.RemoveAt(0);
+		}
 		if (const UEntropiaAnimationSet* Set = UEntropiaAnimationSet::Get())
 		{
 			// El disparo reemplaza la pose de apuntar un momento; al terminar, el Tick la vuelve a poner.

@@ -3,6 +3,7 @@
 #include "TemporalProjectile.h"
 #include "TemporalBreakable.h"
 #include "TemporalFX.h"
+#include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalCombat.h"
 #include "TemporalHealthComponent.h"
@@ -21,7 +22,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 
-namespace
+namespace EntropiaProjectileLook
 {
 	const FLinearColor NormalColor(1.f, 0.55f, 0.1f);
 	const FLinearColor InvertedColor(0.2f, 0.6f, 1.f);
@@ -61,7 +62,9 @@ void ATemporalProjectile::BeginPlay()
 
 void ATemporalProjectile::Paint(const FLinearColor& Color)
 {
-	TemporalFX::ApplyToAllSlots(Mesh, TemporalFX::MakeSolid(this, Color));
+	// Un material compartido por color (antes: uno nuevo por bala).
+	UTemporalFXSubsystem* FX = UTemporalFXSubsystem::Get(this);
+	TemporalFX::ApplyToAllSlots(Mesh, FX ? FX->GetSharedSolid(Color) : TemporalFX::MakeSolid(this, Color));
 }
 
 void ATemporalProjectile::ResetIgnored()
@@ -77,7 +80,7 @@ void ATemporalProjectile::Launch(const FVector& InMuzzle, const FVector& Directi
 	Traveled = 0.f;
 	ResetIgnored();
 	SetActorLocationAndRotation(Muzzle, Dir.Rotation());
-	Paint(bFromPlayer ? PlayerColor : NormalColor);
+	Paint(bFromPlayer ? EntropiaProjectileLook::PlayerColor : EntropiaProjectileLook::NormalColor);
 	// El punto de salida queda grabado aunque choque en su primer frame (si no, R no tendría a dónde regresarla).
 	Recorder->RecordSnapshot(1.f / 60.f);
 	if (bFromPlayer)
@@ -96,8 +99,8 @@ void ATemporalProjectile::LaunchInverted(const FVector& InMuzzle, const FVector&
 	Gun = InGun;
 	Wait = InvertedDelay;
 	SetActorLocationAndRotation(Impact, Dir.Rotation());
-	Paint(InvertedColor);
-	TemporalFX::Burst(this, Impact, InvertedColor, 0.6f);
+	Paint(EntropiaProjectileLook::InvertedColor);
+	TemporalFX::Burst(this, Impact, EntropiaProjectileLook::InvertedColor, 0.6f);
 	State = EState::InvertedWaiting;
 }
 
@@ -271,18 +274,18 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 	float StopDistance = PlayerDistance >= 0.f ? PlayerDistance : StepLength;
 	if (bFromPlayer)
 	{
-		FHitResult PawnHit;
-		if (GetWorld()->LineTraceSingleByObjectType(PawnHit, Start, End, FCollisionObjectQueryParams(ECC_Pawn), Params))
+		// Todos los Pawn del tramo: otro Pawn delante (que no es maniquí) no tapa al maniquí de atrás.
+		TArray<FHitResult> PawnHits;
+		GetWorld()->LineTraceMultiByObjectType(PawnHits, Start, End, FCollisionObjectQueryParams(ECC_Pawn), Params);
+		for (const FHitResult& PawnHit : PawnHits)
 		{
-			MannequinVictim = Cast<ATemporalMannequin>(PawnHit.GetActor());
-			if (MannequinVictim && PawnHit.Distance < StopDistance)
+			ATemporalMannequin* Candidate = Cast<ATemporalMannequin>(PawnHit.GetActor());
+			if (Candidate && PawnHit.Distance < StopDistance)
 			{
+				MannequinVictim = Candidate;
 				MannequinHit = PawnHit;
 				StopDistance = PawnHit.Distance;
-			}
-			else
-			{
-				MannequinVictim = nullptr;
+				break;
 			}
 		}
 	}
@@ -312,7 +315,7 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 		else if (HitComp && HitComp->IsSimulatingPhysics())
 		{
 			HitComp->AddImpulseAtLocation(Dir * PushSpeed * HitComp->GetMass(), Hit.ImpactPoint);
-			TemporalFX::Burst(this, Hit.ImpactPoint, NormalColor, 0.3f);
+			TemporalFX::Burst(this, Hit.ImpactPoint, EntropiaProjectileLook::NormalColor, 0.3f);
 		}
 		else if (HitActor && HitActor->IsA<APawn>())
 		{
@@ -397,13 +400,13 @@ void ATemporalProjectile::Embed(const FVector& At)
 	Recorder->RecordSnapshot(FMath::Max(LastStepSeconds, 1.f / 120.f));
 	PauseRecordingIfAlone();
 	// Las del jugador son muchas (fusil): chispas más chicas.
-	TemporalFX::Burst(this, At, bFromPlayer ? PlayerColor : NormalColor, bFromPlayer ? 0.12f : 0.4f);
+	TemporalFX::Burst(this, At, bFromPlayer ? EntropiaProjectileLook::PlayerColor : EntropiaProjectileLook::NormalColor, bFromPlayer ? 0.12f : 0.4f);
 }
 
 void ATemporalProjectile::ReturnToGun()
 {
 	Unstick();
-	TemporalFX::Burst(this, Muzzle, IsInverted() ? InvertedColor : (bFromPlayer ? PlayerColor : NormalColor), 0.5f);
+	TemporalFX::Burst(this, Muzzle, IsInverted() ? EntropiaProjectileLook::InvertedColor : (bFromPlayer ? EntropiaProjectileLook::PlayerColor : EntropiaProjectileLook::NormalColor), 0.5f);
 	if (bFromPlayer)
 	{
 		// Recarga inversa: vuelve al cargador de su arma.

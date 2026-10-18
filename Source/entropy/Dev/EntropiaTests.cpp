@@ -909,6 +909,16 @@ bool FEntropiaGunStoredShotsSum::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunRecoilClamp, "Entropia.Gun.RecoilClamp", EntropiaTestFlags::Flags)
+bool FEntropiaGunRecoilClamp::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Lejos del tope: patea completo"), EntropiaGuns::RecoilApplied(10.f, 3.2f, 89.9f), 3.2f, 0.001f);
+	TestEqual(TEXT("Cerca del tope: solo lo que cabe"), EntropiaGuns::RecoilApplied(88.f, 3.2f, 89.9f), 1.9f, 0.001f);
+	TestEqual(TEXT("En el tope: nada"), EntropiaGuns::RecoilApplied(89.9f, 3.2f, 89.9f), 0.f, 0.001f);
+	TestEqual(TEXT("Mirando abajo (pitch 350 = -10): completo"), EntropiaGuns::RecoilApplied(350.f, 3.2f, 89.9f), 3.2f, 0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEntropiaGunFreeTravelAndCap, "Entropia.Gun.FreeTravelAndCap", EntropiaTestFlags::Flags)
 bool FEntropiaGunFreeTravelAndCap::RunTest(const FString& Parameters)
 {

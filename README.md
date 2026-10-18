@@ -67,7 +67,7 @@ También: **correr** (mantener Shift), **agacharse** (C), **caídas** (rodar si 
 Compilar desde la consola (con el editor **cerrado**) y correr las pruebas:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File Tools\build-test.ps1        # compila + 53 pruebas automáticas
+powershell -ExecutionPolicy Bypass -File Tools\build-test.ps1        # compila + 54 pruebas automáticas
 powershell -ExecutionPolicy Bypass -File Tools\run-tour.ps1          # el juego se prueba solo y toma capturas
 powershell -ExecutionPolicy Bypass -File Tools\run-tour.ps1 -ExtraArgs '-EntropiaTour=caos'   # cosas raras a propósito
 ```

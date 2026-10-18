@@ -120,6 +120,12 @@ namespace EntropiaGuns
 		return FreePart + (1.f - UsedFraction) * Normal;
 	}
 
+	float RecoilApplied(float Pitch, float Kick, float MaxPitch)
+	{
+		// La cámara no sube más allá del tope: lo que no cabe no se "debe" (si no, al regresar quedaría más abajo).
+		return FMath::Clamp(MaxPitch - FRotator::NormalizeAxis(Pitch), 0.f, FMath::Max(Kick, 0.f));
+	}
+
 	int32 OldestToEvict(int32 NumLive, int32 Cap)
 	{
 		return FMath::Max(0, NumLive - Cap);

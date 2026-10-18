@@ -18,6 +18,7 @@
 class ATemporalProjectile;
 class UStaticMeshComponent;
 class UTemporalAimComponent;
+class UEntropiaWeaponSet;
 struct FEntropiaAnimSlot;
 struct FEntropiaWeaponStats;
 enum class EEntropiaBulletEvent : uint8;
@@ -107,6 +108,10 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> Parts;
+
+	/** DA_Armas (referencia fuerte mientras exista el jugador). */
+	UPROPERTY()
+	TObjectPtr<UEntropiaWeaponSet> WeaponSet;
 
 	TWeakObjectPtr<UTemporalAimComponent> Aim;
 	TArray<TWeakObjectPtr<ATemporalProjectile>> LiveBullets;

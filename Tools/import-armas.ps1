@@ -26,6 +26,7 @@ foreach ($Item in $Items) {
 	Write-Output "$($Item.File): $($Result.Line -replace '^.*Display: ','')"
 	if (-not ($Result -and $Result.Line -match 'Success - 0 error')) { $Failed++ }
 }
-# Al abrir el editor (o el tour), DA_Armas limita sus texturas a 1024 (MaxTextureSize del set).
+# Marca para que, al abrir el editor (o el tour), se limiten las texturas a 1024 y se apague Nanite una sola vez.
+Set-Content -Path (Join-Path $Root 'Saved\ArmasFab.pendiente') -Value (Get-Date -Format o) -Encoding utf8
 if ($Failed -gt 0) { Write-Output "IMPORTACION CON FALLAS: $Failed"; exit 1 }
 exit 0
