@@ -78,6 +78,8 @@ void ATemporalProjectile::Launch(const FVector& InMuzzle, const FVector& Directi
 	ResetIgnored();
 	SetActorLocationAndRotation(Muzzle, Dir.Rotation());
 	Paint(bFromPlayer ? PlayerColor : NormalColor);
+	// El punto de salida queda grabado aunque choque en su primer frame (si no, R no tendría a dónde regresarla).
+	Recorder->RecordSnapshot(1.f / 60.f);
 	if (bFromPlayer)
 	{
 		// Stencil 1 = lo que el mundo detenido deja a color (tú y tus balas).
@@ -157,6 +159,23 @@ void ATemporalProjectile::Notify(EEntropiaBulletEvent Event, AActor* Victim)
 	}
 }
 
+void ATemporalProjectile::PauseRecordingIfAlone()
+{
+	// Quieta no hay nada que grabar: así la Recarga inversa y Devuélvesela no repiten primero el rato que estuvo
+	// incrustada. Si rompió un muro, sigue grabando para rebobinarse al mismo ritmo que los pedazos.
+	TSet<UTemporalRecorderComponent*> Group;
+	Recorder->GatherGroup(Group);
+	if (Group.Num() <= 1)
+	{
+		Recorder->SetPaused(true);
+	}
+}
+
+void ATemporalProjectile::ReportStoredResult(bool bKnockedDown, AActor* Victim)
+{
+	Notify(bKnockedDown ? EEntropiaBulletEvent::KnockedDown : EEntropiaBulletEvent::Hit, Victim);
+}
+
 void ATemporalProjectile::Unstick()
 {
 	if (ATemporalMannequin* Parent = Cast<ATemporalMannequin>(GetAttachParentActor()))
@@ -177,6 +196,8 @@ bool ATemporalProjectile::HitMannequin(ATemporalMannequin* Victim, const FHitRes
 		SetActorLocation(Hit.ImpactPoint - Dir * 4.f);
 		AttachToActor(Victim, FAttachmentTransformRules::KeepWorldTransform);
 		State = EState::Embedded;
+		Recorder->RecordSnapshot(FMath::Max(LastStepSeconds, 1.f / 120.f));
+		PauseRecordingIfAlone();
 		TemporalFX::Burst(this, Hit.ImpactPoint, FLinearColor(0.6f, 0.92f, 1.f), 0.25f);
 		Notify(EEntropiaBulletEvent::Stored, Victim);
 		return true;
@@ -214,6 +235,7 @@ void ATemporalProjectile::StepForward(float DeltaTime)
 	// flotando un poco más allá ("lluvia detenida").
 	const float StepLength = bFromPlayer ? EntropiaGuns::StepDistance(Speed, DeltaTime, TemporalFX::RealDelta(), Traveled, EntropiaGuns::FreeTravel)
 		: Speed * DeltaTime;
+	LastStepSeconds = Speed > 0.f ? StepLength / Speed : DeltaTime;
 	const FVector End = Start + Dir * StepLength;
 
 	// ¿Este tramo toca al jugador? Las paredes solo se revisan hasta ahí (una pared en medio te protege).
@@ -371,6 +393,9 @@ void ATemporalProjectile::Embed(const FVector& At)
 {
 	SetActorLocation(At - Dir * 5.f);
 	State = EState::Embedded;
+	// El punto del impacto también queda grabado (el Registro graba después de este Tick y podría estar en pausa ya).
+	Recorder->RecordSnapshot(FMath::Max(LastStepSeconds, 1.f / 120.f));
+	PauseRecordingIfAlone();
 	// Las del jugador son muchas (fusil): chispas más chicas.
 	TemporalFX::Burst(this, At, bFromPlayer ? PlayerColor : NormalColor, bFromPlayer ? 0.12f : 0.4f);
 }

@@ -266,7 +266,9 @@ void UEntropiaPlayerPowers::PrimaryReleased()
 
 bool UEntropiaPlayerPowers::ReloadIfNothingAimed()
 {
-	if (!Weapons || (Aim && Aim->FindTarget()))
+	// Solo se invierte lo que tiene Registro Temporal; apuntando a un enemigo (sin Registro), R recarga.
+	const AActor* Target = Aim ? Aim->FindTarget() : nullptr;
+	if (!Weapons || (Target && Target->FindComponentByClass<UTemporalRecorderComponent>()))
 	{
 		return false;
 	}

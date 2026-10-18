@@ -80,7 +80,7 @@ public:
 	void PrimaryAction();
 	/** Soltar el clic izquierdo (el fusil deja de disparar). */
 	void PrimaryReleased();
-	/** R sin nada en la mira = recargar. True si no había nada en la mira (la R ya se usó). */
+	/** R sin nada que invertir en la mira (nada, o un enemigo) = recargar. True si la R ya se usó para eso. */
 	bool ReloadIfNothingAimed();
 	void TryDash();
 	void ToggleOverdrive();

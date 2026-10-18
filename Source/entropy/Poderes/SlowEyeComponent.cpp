@@ -61,6 +61,11 @@ void USlowEyeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	TArray<AActor*> InRange;
 	for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
 	{
+		// Fase 4: tus propias balas no (ni las que disparas ni las que dejaste en la pared).
+		if (It->bFromPlayer)
+		{
+			continue;
+		}
 		if (FVector::DistSquared(It->GetActorLocation(), Eye) <= FMath::Square(Radius))
 		{
 			InRange.Add(*It);

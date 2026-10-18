@@ -1143,12 +1143,12 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		Powers->PrimaryReleased();
 		LogWeapon(TEXT("fusil_rafaga2"));
 		const UEntropiaWeaponComponent* W = Powers->Weapons;
-		// La más nueva que ya lleva un rato en la pared (una recién disparada todavía no tiene nada grabado).
+		// La más nueva que ya está incrustada en la pared.
 		ATemporalProjectile* Newest = nullptr;
 		for (int32 i = W ? W->GetLiveBullets().Num() - 1 : -1; i >= 0 && !Newest; --i)
 		{
 			ATemporalProjectile* Candidate = W->GetLiveBullets()[i].Get();
-			Newest = Candidate && Candidate->Recorder->GetRecordedSeconds() > 0.3f ? Candidate : nullptr;
+			Newest = Candidate && Candidate->IsEmbedded() ? Candidate : nullptr;
 		}
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR recarga_inversa_antes balas=%d"), W ? W->CurrentState().Ammo : -1);
 		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
@@ -1266,6 +1266,151 @@ void UEntropiaTourComponent::BuildNormalSteps()
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR q_detener detenido=%d burbujas=%d"), Powers->TimeStop && WeaponDummy(0) && Powers->TimeStop->IsStoppedByMe(WeaponDummy(0)) ? 1 : 0,
 			Powers->TimeStop ? Powers->TimeStop->NumStopped() : -1);
 		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Revisión final (fase 4): Ojo lento con tus balas, Q y R con tus balas en la pared, R apuntando a un enemigo,
+	// Recarga inversa de una bala que lleva rato incrustada y tiros guardados que tumban al último.
+	auto Newest = [this]() -> ATemporalProjectile*
+	{
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		return W && W->GetLiveBullets().Num() > 0 ? W->GetLiveBullets().Last().Get() : nullptr;
+	};
+	auto Ammo = [this]() { return Powers->Weapons ? Powers->Weapons->CurrentState().Ammo : -1; };
+	TSharedRef<float> EnergyBefore = MakeShared<float>(0.f);
+	Add(TEXT("rf_prepara"), 1.9f, [this, BesideDummy]
+	{
+		Rooms->GoToRoom(7);
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { It->Destroy(); }
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 0) { Powers->Weapons->CycleWeapon(1); }
+		if (Powers->GetTimeStopLevel() > 1) { Powers->CycleTimeStopLevel(); }
+		// Después del teletransporte (teletransportarse cancela la recarga).
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+		BesideDummy(0);
+	});
+	// 1 · Una bala tuya al piso, a 2.5 m: el Ojo lento no debe frenarla ni gastar energía.
+	Add(TEXT("rf_ojo_apunta"), 0.4f, [this]
+	{
+		if (const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0)) { LookAtPoint(Pawn->GetActorLocation() + Pawn->GetActorForwardVector() * 150.f - FVector(0.f, 0.f, 90.f)); }
+	});
+	Add(TEXT("rf_ojo_dispara"), 0.6f, [this, EnergyBefore]
+	{
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		*EnergyBefore = Powers->Energy ? Powers->Energy->Energy : 0.f;
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("rf_ojo_revisa"), 0.2f, [this, Newest, EnergyBefore]
+	{
+		const ATemporalProjectile* Bullet = Newest();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ojo_lento_propias frenada=%d gasto=%.0f"), Bullet && Bullet->CustomTimeDilation < 0.9f ? 1 : 0,
+			Powers->Energy ? *EnergyBefore - Powers->Energy->Energy : -1.f);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR diag_ojo bala=%d dist=%.0f balas=%d apuntando=%d"), Bullet ? 1 : 0,
+			Bullet && Pawn ? FVector::Dist(Bullet->GetActorLocation(), Pawn->GetActorLocation()) : -1.f, Powers->Weapons ? Powers->Weapons->CurrentState().Ammo : -1,
+			Powers->Aim && Powers->Aim->IsAiming() ? 1 : 0);
+	});
+	// 2 · Balas tuyas incrustadas alrededor del dummy: Q apuntando a él lo detiene a ÉL.
+	Add(TEXT("rf_balas_alrededor"), 0.5f, [this, WeaponDummy, HeadOf]
+	{
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (WeaponDummy(0) && Pawn)
+		{
+			// Pasan a 30-40 cm del dummy y se incrustan detrás de él: desde la cámara quedan a 2-4° de la mira.
+			const FVector From = Pawn->GetActorLocation() + FVector(0.f, 0.f, 60.f);
+			const FVector Side = FVector::CrossProduct((HeadOf(0) - From).GetSafeNormal(), FVector::UpVector).GetSafeNormal();
+			for (const FVector& Offset : { Side * 35.f - FVector(0.f, 0.f, 40.f), Side * -35.f - FVector(0.f, 0.f, 40.f), Side * 40.f - FVector(0.f, 0.f, 70.f) })
+			{
+				const FVector To = HeadOf(0) + Offset;
+				SpawnPlayerTourBullet(From, (To - From).GetSafeNormal(), 55.f, 200.f, 900.f);
+			}
+		}
+	});
+	Add(TEXT("rf_q_apunta"), 0.4f, [this, HeadOf] { LookAtPoint(HeadOf(0) - FVector(0.f, 0.f, 40.f)); });
+	Add(TEXT("rf_q_apunta2"), 0.3f, [this, HeadOf] { LookAtPoint(HeadOf(0) - FVector(0.f, 0.f, 40.f)); });
+	Add(TEXT("rf_q"), 0.3f, [this, WeaponDummy]
+	{
+		Powers->SpawnBubble();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR q_con_balas detenido=%d"), Powers->TimeStop && WeaponDummy(0) && Powers->TimeStop->IsStoppedByMe(WeaponDummy(0)) ? 1 : 0);
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	// 3 · R apuntando a un enemigo (no se puede invertir): recarga.
+	Add(TEXT("rf_r_enemigo"), 1.9f, [this]
+	{
+		// Sin balas enemigas volando hacia ti (si hay una en la mira, R la invierte: eso es Devuélvesela).
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { if (!It->bFromPlayer) { It->Destroy(); } }
+		const bool bUsed = Powers->ReloadIfNothingAimed();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR r_al_enemigo usada=%d recargando=%d"), bUsed ? 1 : 0,
+			Powers->Weapons && Powers->Weapons->CurrentState().IsReloading() ? 1 : 0);
+	});
+	// 4 · Una bala que lleva 2.5 s en la pared: la Recarga inversa la regresa enseguida (no repite el rato que estuvo quieta).
+	Add(TEXT("rf_pared_apunta"), 0.4f, [this]
+	{
+		if (Rooms->CombatRoom) { LookAtPoint(Rooms->CombatRoom->RoomToWorld(FVector(2600.f, 0.f, 150.f))); }
+	});
+	Add(TEXT("rf_pared_dispara"), 0.05f, [this]
+	{
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("rf_pared_espera"), 2.45f, [this, Newest]
+	{
+		const ATemporalProjectile* Bullet = Newest();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR diag_vuelo bala=%d incrustada=%d grabado=%.3f dilatacion=%.2f"), Bullet ? 1 : 0, Bullet && Bullet->IsEmbedded() ? 1 : 0,
+			Bullet ? Bullet->Recorder->GetRecordedSeconds() : -1.f, Bullet ? Bullet->CustomTimeDilation : -1.f);
+		const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Bullet && Pawn && Rooms->CombatRoom)
+		{
+			UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR diag_vuelo2 bala_local=%s jugador_local=%s canon=%s"),
+				*Rooms->CombatRoom->GetActorTransform().InverseTransformPosition(Bullet->GetActorLocation()).ToCompactString(),
+				*Rooms->CombatRoom->GetActorTransform().InverseTransformPosition(Pawn->GetActorLocation()).ToCompactString(),
+				Powers->Weapons ? *Rooms->CombatRoom->GetActorTransform().InverseTransformPosition(Powers->Weapons->GetMuzzleLocation()).ToCompactString() : TEXT("-"));
+		}
+	});
+	Add(TEXT("rf_pared_invierte"), 0.8f, [this, Newest, Ammo]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR recarga_incrustada_antes balas=%d"), Ammo());
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		ATemporalProjectile* Bullet = Newest();
+		const bool bStarted = Bullet && Powers->Inversion && Powers->Inversion->BeginInversionOn(Bullet->Recorder);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR diag_incrustada bala=%d incrustada=%d grabado=%.2f invierte=%d rebobina=%d"), Bullet ? 1 : 0, Bullet && Bullet->IsEmbedded() ? 1 : 0,
+			Bullet ? Bullet->Recorder->GetRecordedSeconds() : -1.f, bStarted ? 1 : 0, Bullet && Bullet->Recorder->IsRewinding() ? 1 : 0);
+	});
+	// 5 · Último en caer con tiros guardados: dos tumbados, el tercero detenido recibe un tiro a la cabeza y, al soltarlo, cae.
+	Add(TEXT("rf_guardado_prepara"), 0.6f, [this, Ammo, WeaponDummy, BesideDummy]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR recarga_incrustada balas=%d"), Ammo());
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		for (int32 i = 0; i < 2; ++i)
+		{
+			if (ATemporalArmedDummy* Down = WeaponDummy(i)) { Down->ReceiveTakedown(Down->GetActorForwardVector() * -1.f, 300.f); }
+		}
+		BesideDummy(2);
+	});
+	Add(TEXT("rf_guardado_apunta"), 0.4f, [this, HeadOf] { LookAtPoint(HeadOf(2)); });
+	Add(TEXT("rf_guardado_apunta2"), 0.3f, [this, HeadOf, WeaponDummy]
+	{
+		LookAtPoint(HeadOf(2));
+		if (Powers->TimeStop && WeaponDummy(2)) { Powers->TimeStop->StopActor(WeaponDummy(2)); }
+	});
+	Add(TEXT("rf_guardado_dispara"), 0.4f, [this]
+	{
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("rf_guardado_suelta"), 0.2f, [this, WeaponDummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ultimo_guardado_antes guardados=%d"), WeaponDummy(2) ? WeaponDummy(2)->NumStoredShots() : -1);
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	Add(TEXT("rf_guardado_revisa"), 0.9f, [this, WeaponDummy]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR ultimo_guardado tumbado=%d camara_lenta=%d marca=%d"), WeaponDummy(2) && WeaponDummy(2)->IsKnockedDown() ? 1 : 0,
+			Powers->Weapons && Powers->Weapons->IsKillCamActive() ? 1 : 0, Powers->Weapons && Powers->Weapons->GetHitMarkerAlpha() > 0.f ? 1 : 0);
 		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
 		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
 		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }

@@ -98,6 +98,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	void SetPaused(bool bPaused);
 
+	/** Graba un frame ya (aunque esté en pausa). Lo usa la bala al salir del cañón y al incrustarse: si choca en su primer
+	 *  frame, el Registro todavía no había grabado nada y no se podría rebobinar. */
+	void RecordSnapshot(float DeltaTime);
+
 	/** Borra todo lo grabado (por ejemplo, al reaparecer). */
 	UFUNCTION(BlueprintCallable, Category = "Entropia")
 	void ClearRecording();

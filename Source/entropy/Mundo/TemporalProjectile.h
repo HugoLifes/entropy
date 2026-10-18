@@ -91,6 +91,12 @@ public:
 	/** Bala invertida: nace en Impact y regresa a InMuzzle. */
 	void LaunchInverted(const FVector& InMuzzle, const FVector& Impact, AActor* InGun);
 
+	/** Incrustada en una pared (o pegada a un maniquí congelado): ya no vuela. */
+	bool IsEmbedded() const { return State == EState::Embedded; }
+
+	/** Tiros guardados que salieron juntos (Fase 4): avisa al arma si lo tumbaron (marca roja, Último en caer). */
+	void ReportStoredResult(bool bKnockedDown, AActor* Victim);
+
 	UFUNCTION(BlueprintPure, Category = "Entropia")
 	bool IsInverted() const { return State == EState::InvertedWaiting || State == EState::InvertedFlying; }
 
@@ -119,6 +125,8 @@ private:
 	void ResetIgnored();
 	void Paint(const FLinearColor& Color);
 	void Notify(EEntropiaBulletEvent Event, AActor* Victim);
+	/** Deja de grabar mientras está incrustada (si no rompió nada que se rebobine con ella). */
+	void PauseRecordingIfAlone();
 	/** Si estaba pegada a un maniquí congelado, se despega y su tiro ya no cuenta. */
 	void Unstick();
 	/** Le pega a un maniquí (solo balas del jugador). True si la bala terminó ahí (pegada o destruida). */
@@ -130,6 +138,8 @@ private:
 	FVector Muzzle = FVector::ZeroVector;
 	FVector Dir = FVector::ForwardVector;
 	float Traveled = 0.f;
+	/** Segundos del último tramo (para grabar el frame del impacto). */
+	float LastStepSeconds = 0.f;
 	float Wait = 0.f;
 	TWeakObjectPtr<AActor> Gun;
 	/** Lo que ya atravesó en este vuelo (bloques rotos, cajas empujadas). */
