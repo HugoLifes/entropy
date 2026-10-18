@@ -46,8 +46,9 @@ bool UEntropiaCoverComponent::WallAt(const FVector& Location, float* OutHeight) 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(EntropiaCoverWall), false, Character);
 	const FVector Knee(Location.X, Location.Y, FeetZ + 50.f);
 	FHitResult Face;
+	// Los Pawn y lo que tiene física (los pedazos de un muro que se acaba de romper) no son pared.
 	if (!GetWorld()->LineTraceSingleByChannel(Face, Knee, Knee - CoverNormal * (Radius + 40.f), ECC_Visibility, Params)
-		|| (Face.GetActor() && Face.GetActor()->IsA<APawn>()))
+		|| (Face.GetActor() && Face.GetActor()->IsA<APawn>()) || (Face.GetComponent() && Face.GetComponent()->IsSimulatingPhysics()))
 	{
 		return false;
 	}

@@ -42,6 +42,9 @@
 #include "TemporalPhysicsLab.h"
 #include "TemporalTurret.h"
 #include "TemporalProjectile.h"
+#include "EntropiaWeaponComponent.h"
+#include "TemporalShootingRoom.h"
+#include "EntropiaWeaponSet.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -563,12 +566,16 @@ void UEntropiaTourComponent::BuildChaosSteps()
 		const bool bIn = Powers->Cover && Powers->Cover->TryEnter();
 		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_rompible entro=%d"), bIn ? 1 : 0);
 	});
-	Add(TEXT("cobertura_se_rompe"), 0.6f, [this]
+	Add(TEXT("cobertura_recien_rota"), 0.15f, [this]
 	{
 		for (TActorIterator<ATemporalBreakable> It(GetWorld()); It; ++It)
 		{
 			It->Break(It->GetActorLocation(), FVector::UpVector);
 		}
+	});
+	Add(TEXT("cobertura_recien_rota_revisa"), 0.45f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cobertura_recien_rota cubierto=%d"), Powers->Cover && Powers->Cover->IsInCover() ? 1 : 0);
 	});
 	Add(TEXT("cobertura_rompible_revisa"), 0.3f, [this]
 	{
@@ -784,6 +791,284 @@ void UEntropiaTourComponent::BuildChaosSteps()
 	{
 		LogWorld(TEXT("mundo_tras_teletransporte"));
 		Powers->CycleTimeStopLevel();
+	});
+	// Fase 4 · Tiros guardados en un congelado y la sala se reinicia: se descartan (ni se pierden después ni salen dos veces).
+	Add(TEXT("tiros_guardados_prepara"), 1.f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("tiros_guardados"), 0.4f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		if (!Target)
+		{
+			return;
+		}
+		if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+		const FVector Aim = Target->GetActorLocation();
+		for (int32 i = 0; i < 2; ++i)
+		{
+			SpawnPlayerTourBullet(Aim - Target->GetActorForwardVector() * 250.f, Target->GetActorForwardVector(), 20.f, 60.f, 450.f);
+		}
+	});
+	Add(TEXT("tiros_guardados_reinicio"), 0.4f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiros_guardados guardados=%d"), Target ? Target->NumStoredShots() : -1);
+		if (Rooms->CombatRoom) { Rooms->CombatRoom->ResetRoom(); }
+		if (Powers->TimeStop) { Powers->TimeStop->ReleaseAll(); }
+	});
+	Add(TEXT("tiros_guardados_revisa"), 0.5f, [this]
+	{
+		ATemporalArmedDummy* Target = Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+		int32 Stuck = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It)
+		{
+			Stuck += Target && It->GetAttachParentActor() == Target ? 1 : 0;
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR tiros_guardados_reinicio guardados=%d balas_pegadas=%d aguante=%.0f tumbado=%d"), Target ? Target->NumStoredShots() : -1,
+			Stuck, Target ? Target->GetToughness() : -1.f, Target && Target->IsKnockedDown() ? 1 : 0);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 4 · Recarga interrumpida (cambiar de arma, morir) y Recarga inversa con Ctrl+R sobre muchas balas.
+	auto ChaosWeapon = [this](const TCHAR* Tag)
+	{
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR %s arma=%s balas=%d recargando=%d"), Tag, W ? *W->CurrentStats().Name.ToString() : TEXT("nada"),
+			W ? W->CurrentState().Ammo : -1, W && W->CurrentState().IsReloading() ? 1 : 0);
+	};
+	auto AimAtWall = [this]()
+	{
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+		if (Rooms->CombatRoom) { LookAtPoint(Rooms->CombatRoom->RoomToWorld(FVector(2600.f, 0.f, 150.f))); }
+	};
+	Add(TEXT("recarga_prepara"), 0.8f, [this, AimAtWall]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		AimAtWall();
+	});
+	Add(TEXT("recarga_dispara"), 0.5f, [this, AimAtWall]
+	{
+		AimAtWall();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("recarga_y_cambio"), 0.5f, [this, ChaosWeapon]
+	{
+		ChaosWeapon(TEXT("recarga_antes"));
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+	});
+	Add(TEXT("recarga_cambio"), 2.2f, [this, ChaosWeapon]
+	{
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(1); Powers->Weapons->CycleWeapon(-1); }
+		ChaosWeapon(TEXT("recarga_interrumpida"));
+	});
+	Add(TEXT("recarga_muere"), 0.5f, [this, ChaosWeapon]
+	{
+		ChaosWeapon(TEXT("recarga_interrumpida_fin"));
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("recarga_muerte_revisa"), 0.6f, [this, ChaosWeapon, AimAtWall]
+	{
+		ChaosWeapon(TEXT("recarga_tras_morir"));
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		AimAtWall();
+	});
+	Add(TEXT("recarga_muerte_dispara"), 0.5f, [this, AimAtWall]
+	{
+		AimAtWall();
+		const int32 Before = Powers->Weapons ? Powers->Weapons->GetTotalShots() : -1;
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR recarga_tras_morir_dispara dispara=%d"), Powers->Weapons && Powers->Weapons->GetTotalShots() > Before ? 1 : 0);
+	});
+	Add(TEXT("recarga_inversa_rafaga"), 3.3f, [this, AimAtWall]
+	{
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 1) { Powers->Weapons->CycleWeapon(1); }
+		AimAtWall();
+		Powers->PrimaryAction();
+	});
+	Add(TEXT("recarga_inversa_todo"), 3.f, [this, ChaosWeapon]
+	{
+		Powers->PrimaryReleased();
+		ChaosWeapon(TEXT("recarga_inversa_vacio"));
+		Rooms->RewindAll(true);
+	});
+	Add(TEXT("recarga_inversa_todo_revisa"), 0.4f, [this, ChaosWeapon]
+	{
+		Rooms->RewindAll(false);
+		ChaosWeapon(TEXT("recarga_inversa_todo"));
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(-1); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Fase 4 · Lluvia detenida y morir antes de que vuelva el tiempo: todo vuelve a la normalidad y las balas no te pegan.
+	Add(TEXT("lluvia_muerte_prepara"), 0.8f, [this, AimAtWall]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 0) { Powers->Weapons->CycleWeapon(1); }
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		AimAtWall();
+	});
+	Add(TEXT("lluvia_muerte_mundo"), 0.3f, [this] { Powers->SpawnBubble(); });
+	for (int32 Shot = 0; Shot < 3; ++Shot)
+	{
+		Add(TEXT("lluvia_muerte_disparo"), 0.5f, [this]
+		{
+			Powers->PrimaryAction();
+			Powers->PrimaryReleased();
+		});
+	}
+	Add(TEXT("lluvia_muere"), 0.6f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_antes_de_morir mundo=%d vivas=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Powers->Weapons ? Powers->Weapons->NumLiveBullets() : -1);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("lluvia_muerte_revisa"), 1.f, [this]
+	{
+		const ACharacter* Character = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR lluvia_y_muerte mundo=%d global=%.2f stencil=%d vida_llena=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f, Character ? Character->GetMesh()->CustomDepthStencilValue : -1,
+			Powers->Health && Powers->Health->GetFraction() >= 1.f ? 1 : 0);
+		Powers->CycleTimeStopLevel();
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+	});
+	// Fase 4 · Lluvia detenida en la sala 8 y teletransporte a la 7 antes de que vuelva el tiempo: todo vuelve a la normalidad.
+	Add(TEXT("sala8_lluvia_prepara"), 0.8f, [this]
+	{
+		Rooms->GoToRoom(8);
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Powers->GetTimeStopLevel() < 2) { Powers->CycleTimeStopLevel(); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(true); }
+	});
+	Add(TEXT("sala8_lluvia"), 0.5f, [this]
+	{
+		Powers->SpawnBubble();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("sala8_teleport"), 0.4f, [this]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala8_antes mundo=%d"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0);
+		Rooms->GoToRoom(7);
+	});
+	Add(TEXT("sala8_teleport_revisa"), 0.4f, [this]
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR sala8_teleport_lluvia mundo=%d global=%.2f"), Powers->WorldStop && Powers->WorldStop->IsActive() ? 1 : 0,
+			Dilation ? Dilation->GetGlobalDilation() : -1.f);
+		Powers->CycleTimeStopLevel();
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
+	});
+	// Detalles chicos (fase 4): morir con tiros guardados, teletransporte a media recarga, reembolso a SU arma y ráfaga larga.
+	auto Stuck0 = [this]() -> ATemporalArmedDummy*
+	{
+		return Rooms->CombatRoom && Rooms->CombatRoom->GetDummies().Num() > 0 ? Rooms->CombatRoom->GetDummies()[0].Get() : nullptr;
+	};
+	Add(TEXT("dc_guardados_muerte_prepara"), 0.8f, [this]
+	{
+		Rooms->GoToRoom(7);
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+	});
+	Add(TEXT("dc_guardados_muerte"), 0.4f, [this, Stuck0]
+	{
+		ATemporalArmedDummy* Target = Stuck0();
+		if (!Target)
+		{
+			return;
+		}
+		if (Powers->TimeStop) { Powers->TimeStop->StopActor(Target); }
+		for (int32 i = 0; i < 2; ++i)
+		{
+			SpawnPlayerTourBullet(Target->GetActorLocation() - Target->GetActorForwardVector() * 200.f, Target->GetActorForwardVector(), 20.f, 60.f, 450.f);
+		}
+	});
+	Add(TEXT("dc_guardados_muere"), 0.6f, [this, Stuck0]
+	{
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR guardados_antes_de_morir guardados=%d"), Stuck0() ? Stuck0()->NumStoredShots() : -1);
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); Powers->Health->ApplyDamage(1000.f); }
+	});
+	Add(TEXT("dc_guardados_muerte_revisa"), 1.f, [this, Stuck0]
+	{
+		const ATemporalArmedDummy* Target = Stuck0();
+		int32 Stuck = 0;
+		for (TActorIterator<ATemporalProjectile> It(GetWorld()); It; ++It) { Stuck += Target && It->GetAttachParentActor() == Target ? 1 : 0; }
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR guardados_tras_morir guardados=%d pegadas=%d aguante=%.0f tumbado=%d"), Target ? Target->NumStoredShots() : -1, Stuck,
+			Target ? Target->GetToughness() : -1.f, Target && Target->IsKnockedDown() ? 1 : 0);
+	});
+	// Teletransporte a media recarga: se cancela (sin balas gratis) y el arma sigue funcionando.
+	Add(TEXT("dc_tele_recarga_prepara"), 0.6f, [this, AimAtWall]
+	{
+		if (Powers->Health) { Powers->Health->SetInvulnerable(60.f); }
+		if (Powers->Weapons && Powers->Weapons->GetCurrentIndex() != 0) { Powers->Weapons->CycleWeapon(1); }
+		AimAtWall();
+	});
+	Add(TEXT("dc_tele_recarga_dispara"), 0.5f, [this, AimAtWall]
+	{
+		AimAtWall();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("dc_tele_recarga"), 0.5f, [this, ChaosWeapon]
+	{
+		ChaosWeapon(TEXT("tele_recarga_antes"));
+		if (Powers->Weapons) { Powers->Weapons->Reload(); }
+	});
+	Add(TEXT("dc_tele_recarga_teletransporte"), 2.f, [this] { Rooms->GoToRoom(7); });
+	Add(TEXT("dc_tele_recarga_revisa"), 0.1f, [this, ChaosWeapon] { ChaosWeapon(TEXT("tele_recarga")); });
+	// Reembolso cruzado: una bala del revólver vuelve al revólver aunque tengas el fusil en la mano.
+	Add(TEXT("dc_cruzado_dispara"), 0.6f, [this, AimAtWall]
+	{
+		AimAtWall();
+		Powers->PrimaryAction();
+		Powers->PrimaryReleased();
+	});
+	Add(TEXT("dc_cruzado_cambia"), 0.3f, [this]
+	{
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(1); }
+	});
+	Add(TEXT("dc_cruzado_invierte"), 1.f, [this]
+	{
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		ATemporalProjectile* Revolver = nullptr;
+		for (const TWeakObjectPtr<ATemporalProjectile>& Live : W ? W->GetLiveBullets() : TArray<TWeakObjectPtr<ATemporalProjectile>>())
+		{
+			Revolver = Live.IsValid() && Live->WeaponIndex == 0 && Live->IsEmbedded() ? Live.Get() : Revolver;
+		}
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cruzado_antes revolver=%d fusil=%d bala=%d"), W ? W->StateOf(0).Ammo : -1, W ? W->StateOf(1).Ammo : -1, Revolver ? 1 : 0);
+		if (Powers->Energy) { Powers->Energy->Energy = Powers->Energy->MaxEnergy; }
+		if (Revolver && Powers->Inversion) { Powers->Inversion->BeginInversionOn(Revolver->Recorder); }
+	});
+	Add(TEXT("dc_cruzado_revisa"), 0.1f, [this]
+	{
+		if (Powers->Inversion) { Powers->Inversion->EndInversion(); }
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR cruzado revolver=%d fusil=%d"), W ? W->StateOf(0).Ammo : -1, W ? W->StateOf(1).Ammo : -1);
+	});
+	// Ráfaga larga (10 s con recargas): nunca más de 40 balas vivas.
+	Add(TEXT("dc_rafaga_larga"), 10.f, [this, AimAtWall]
+	{
+		AimAtWall();
+		Powers->PrimaryAction();
+	});
+	Add(TEXT("dc_rafaga_larga_revisa"), 0.2f, [this]
+	{
+		Powers->PrimaryReleased();
+		const UEntropiaWeaponComponent* W = Powers->Weapons;
+		UE_LOG(LogTemp, Display, TEXT("ENTROPIA_TOUR rafaga_larga vivas=%d tiros=%d"), W ? W->NumLiveBullets() : -1, W ? W->GetTotalShots() : -1);
+		if (Powers->Weapons) { Powers->Weapons->CycleWeapon(-1); }
+		if (Powers->Aim) { Powers->Aim->SetAiming(false); }
+		if (Powers->Health) { Powers->Health->ClearInvulnerable(); }
 	});
 	Add(TEXT("calma"), 2.5f, [] {});
 }

@@ -247,6 +247,14 @@ void UTemporalRecorderComponent::StopRewind()
 	OnRewindFinished.Broadcast();
 }
 
+void UTemporalRecorderComponent::RecordSnapshot(float DeltaTime)
+{
+	if (!IsRewinding())
+	{
+		RecordFrame(FMath::Max(DeltaTime, KINDA_SMALL_NUMBER));
+	}
+}
+
 void UTemporalRecorderComponent::SetPaused(bool bPaused)
 {
 	if (State == ETemporalState::Rewinding)

@@ -1,6 +1,8 @@
 // ENTROPÍA · Barra de energía
 
 #include "TemporalHUDWidget.h"
+#include "EntropiaWeaponComponent.h"
+#include "EntropiaWeaponSet.h"
 #include "TemporalEnergyComponent.h"
 #include "TemporalAimComponent.h"
 #include "TemporalDilation.h"
@@ -48,6 +50,7 @@ int32 UTemporalHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& A
 	LayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 
 	PaintCrosshair(AllottedGeometry, OutDrawElements, LayerId + 3);
+	PaintWeapon(AllottedGeometry, OutDrawElements, LayerId + 3);
 
 	// Remate disponible: aviso debajo de la mira.
 	if (const UTakedownComponent* TakedownComp = Takedown.Get(); TakedownComp && TakedownComp->GetAvailableTarget())
@@ -158,7 +161,9 @@ void UTemporalHUDWidget::PaintCrosshair(const FGeometry& Geometry, FSlateWindowE
 
 	// Cuatro rayitas alrededor de un punto; al apuntar se cierran (más precisión).
 	const float Alpha = AimComp->GetAimAlpha();
-	const float TickGap = FMath::Lerp(10.f, 6.f, Alpha);
+	// Fase 4: las rayitas se separan con la dispersión del arma (al disparar seguido o moverte).
+	const UEntropiaWeaponComponent* WeaponComp = Weapons.Get();
+	const float TickGap = FMath::Lerp(10.f, 6.f, Alpha) + (WeaponComp ? WeaponComp->GetSpreadDegrees() * 6.f * Alpha : 0.f);
 	const float TickLength = FMath::Lerp(8.f, 10.f, Alpha);
 	const float TickThick = 2.f;
 	const FVector2D Center = Geometry.GetLocalSize() * 0.5f;
@@ -178,5 +183,52 @@ void UTemporalHUDWidget::PaintCrosshair(const FGeometry& Geometry, FSlateWindowE
 		Box(Center + FVector2D(-TickGap - TickLength - Pad, -TickThick * 0.5f - Pad), FVector2D(TickLength + Pad * 2.f, TickThick + Pad * 2.f), C);
 		Box(Center + FVector2D(TickGap - Pad, -TickThick * 0.5f - Pad), FVector2D(TickLength + Pad * 2.f, TickThick + Pad * 2.f), C);
 		Box(Center - FVector2D(1.f + Pad, 1.f + Pad), FVector2D(2.f + Pad * 2.f, 2.f + Pad * 2.f), C);
+	}
+}
+
+void UTemporalHUDWidget::SetWeapons(UEntropiaWeaponComponent* InWeapons)
+{
+	Weapons = InWeapons;
+}
+
+void UTemporalHUDWidget::PaintWeapon(const FGeometry& Geometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
+{
+	const UEntropiaWeaponComponent* WeaponComp = Weapons.Get();
+	if (!WeaponComp)
+	{
+		return;
+	}
+	const FVector2D Size = Geometry.GetLocalSize();
+	const FVector2D Center = Size * 0.5f;
+
+	// Marca de impacto: una X alrededor de la mira (blanca = le pegaste, roja = lo tumbaste).
+	if (const float Marker = WeaponComp->GetHitMarkerAlpha(); Marker > 0.f)
+	{
+		const FLinearColor Color = WeaponComp->LastMarkerWasKill() ? FLinearColor(1.f, 0.2f, 0.15f, Marker) : FLinearColor(1.f, 1.f, 1.f, Marker);
+		const float Inner = 7.f;
+		const float Outer = 15.f;
+		for (const FVector2D& Diagonal : { FVector2D(1.f, 1.f), FVector2D(-1.f, 1.f), FVector2D(1.f, -1.f), FVector2D(-1.f, -1.f) })
+		{
+			TArray<FVector2D> Points = { Center + Diagonal * Inner, Center + Diagonal * Outer };
+			FSlateDrawElement::MakeLines(OutDrawElements, LayerId, Geometry.ToPaintGeometry(), Points, ESlateDrawEffect::None, Color, true, 2.5f);
+		}
+	}
+
+	// Abajo a la derecha: arma y balas (o RECARGANDO), y el "+1" dorado de la Recarga inversa.
+	const FEntropiaWeaponState& State = WeaponComp->CurrentState();
+	const FEntropiaWeaponStats& Stats = WeaponComp->CurrentStats();
+	const FString Ammo = State.IsReloading() ? FString(TEXT("RECARGANDO…")) : FString::Printf(TEXT("%d / %d"), State.Ammo, Stats.MagazineSize);
+	const FVector2D Corner(Size.X - 250.f, Size.Y - 92.f);
+	const FSlateFontInfo NameFont = FCoreStyle::GetDefaultFontStyle("Bold", 11);
+	const FSlateFontInfo AmmoFont = FCoreStyle::GetDefaultFontStyle("Bold", 22);
+	FSlateDrawElement::MakeText(OutDrawElements, LayerId, Geometry.ToPaintGeometry(FVector2D(220.f, 18.f), FSlateLayoutTransform(Corner)),
+		Stats.DisplayName.ToString(), NameFont, ESlateDrawEffect::None, FLinearColor(1.f, 1.f, 1.f, 0.8f));
+	const FLinearColor AmmoColor = State.Ammo == 0 && !State.IsReloading() ? FLinearColor(1.f, 0.3f, 0.2f, 1.f) : FLinearColor(1.f, 0.9f, 0.7f, 1.f);
+	FSlateDrawElement::MakeText(OutDrawElements, LayerId, Geometry.ToPaintGeometry(FVector2D(220.f, 34.f), FSlateLayoutTransform(Corner + FVector2D(0.f, 18.f))),
+		Ammo, AmmoFont, ESlateDrawEffect::None, AmmoColor);
+	if (const float Refund = WeaponComp->GetRefundAlpha(); Refund > 0.f)
+	{
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId, Geometry.ToPaintGeometry(FVector2D(80.f, 30.f), FSlateLayoutTransform(Corner + FVector2D(150.f, 18.f - 20.f * (1.f - Refund)))),
+			FString(TEXT("+1")), AmmoFont, ESlateDrawEffect::None, FLinearColor(1.f, 0.8f, 0.3f, Refund));
 	}
 }

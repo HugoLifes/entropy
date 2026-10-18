@@ -6,6 +6,8 @@
 #include "TemporalFXSubsystem.h"
 #include "TemporalSubsystem.h"
 #include "EntropiaAnimationSet.h"
+#include "EntropiaGuns.h"
+#include "TemporalProjectile.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -108,6 +110,86 @@ void ATemporalMannequin::ReceiveHit(const FVector& Direction, bool bKnockdown)
 	TemporalFX::Burst(this, GetActorLocation() + FVector(0.f, 0.f, 50.f), FLinearColor(1.f, 0.75f, 0.5f), 0.3f);
 }
 
+EEntropiaShotResult ATemporalMannequin::ReceiveBulletHit(const FVector& Direction, float Damage, float Impulse, ATemporalProjectile* Bullet)
+{
+	if (bKnockedDown || bPendingHit || IsCollapsing())
+	{
+		return EEntropiaShotResult::Ignored;
+	}
+	const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+	if (Dilation && Dilation->IsFrozen(this))
+	{
+		// Congelado: el tiro espera (estilo JoJo, todos salen juntos cuando su tiempo vuelve).
+		FPendingShot Shot;
+		Shot.Bullet = Bullet;
+		Shot.Direction = Direction;
+		Shot.Damage = Damage;
+		Shot.Impulse = Impulse;
+		StoredShots.Add(Shot);
+		return EEntropiaShotResult::Stored;
+	}
+	return ApplyShot(Direction, Damage, Impulse) ? EEntropiaShotResult::KnockedDown : EEntropiaShotResult::Hurt;
+}
+
+bool ATemporalMannequin::ApplyShot(const FVector& Direction, float Damage, float Impulse)
+{
+	Toughness -= Damage;
+	if (Toughness <= 0.f)
+	{
+		Toughness = 0.f;
+		KnockDown(Direction, Impulse);
+		return true;
+	}
+	ReceiveHit(Direction, false);
+	return false;
+}
+
+void ATemporalMannequin::ForgetStoredShot(const ATemporalProjectile* Bullet)
+{
+	StoredShots.RemoveAll([Bullet](const FPendingShot& Shot) { return Bullet && Shot.Bullet.Get() == Bullet; });
+}
+
+void ATemporalMannequin::ReleaseStoredShots()
+{
+	// Todos los impactos llegan juntos: aguante, empujón y caída de una vez. Las balas pegadas revientan.
+	FEntropiaStoredShots Sum;
+	for (const FPendingShot& Shot : StoredShots)
+	{
+		Sum.Add(Shot.Direction, Shot.Damage, Shot.Impulse);
+	}
+	const TArray<FPendingShot> Released = MoveTemp(StoredShots);
+	StoredShots.Reset();
+	// Con muchos tiros el empujón total sería enorme: se limita para que caiga, no que salga volando del cuarto.
+	const bool bDown = Sum.Num() > 0 && ApplyShot(Sum.AverageDirection(), Sum.TotalDamage(), FMath::Min(Sum.TotalImpulse(), 2000.f));
+	bool bReported = false;
+	for (const FPendingShot& Shot : Released)
+	{
+		if (ATemporalProjectile* Bullet = Shot.Bullet.Get())
+		{
+			// Una sola bala avisa al arma: la marca de impacto y, si cayó el último, la cámara lenta.
+			if (!bReported && Bullet->bFromPlayer)
+			{
+				Bullet->ReportStoredResult(bDown, this);
+				bReported = true;
+			}
+			TemporalFX::Burst(this, Bullet->GetActorLocation(), FLinearColor(1.f, 0.78f, 0.25f), 0.35f);
+			Bullet->Destroy();
+		}
+	}
+}
+
+void ATemporalMannequin::DiscardStoredShots()
+{
+	for (const FPendingShot& Shot : StoredShots)
+	{
+		if (ATemporalProjectile* Bullet = Shot.Bullet.Get())
+		{
+			Bullet->Destroy();
+		}
+	}
+	StoredShots.Reset();
+}
+
 void ATemporalMannequin::SetSubdued(bool bInSubdued, float PoseDelay)
 {
 	bSubdued = bInSubdued;
@@ -200,6 +282,7 @@ void ATemporalMannequin::Recover(bool bWithEffect)
 	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 	bKnockedDown = false;
 	LookTime = 0.f;
+	Toughness = MaxToughness;
 
 	if (bWithEffect)
 	{
@@ -246,6 +329,9 @@ void ATemporalMannequin::SetRagdollFrozen(bool bFrozen)
 
 void ATemporalMannequin::ResetMannequin()
 {
+	// Los tiros guardados se descartan (no salen después ni dos veces).
+	DiscardStoredShots();
+	Toughness = MaxToughness;
 	bPendingHit = false;
 	bPendingNeckBreak = false;
 	StaggerTime = 0.f;
@@ -266,6 +352,14 @@ void ATemporalMannequin::Tick(float DeltaTime)
 
 	// DeltaTime ya trae su tiempo propio: congelado vale 0 (no gira, no se levanta).
 	StaggerTime = FMath::Max(0.f, StaggerTime - DeltaTime);
+	if (StoredShots.Num() > 0)
+	{
+		const UTemporalDilationSubsystem* Dilation = UTemporalDilationSubsystem::Get(this);
+		if (!Dilation || !Dilation->IsFrozen(this))
+		{
+			ReleaseStoredShots();
+		}
+	}
 	if (bSubdued && SubduedPoseDelay > 0.f)
 	{
 		// Terminó de verse el desarme: queda en la llave.

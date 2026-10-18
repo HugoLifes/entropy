@@ -43,6 +43,7 @@ private:
 	void OnRoom5();
 	void OnRoom6();
 	void OnRoom7();
+	void OnRoom8();
 	void OnFire();
 	void OnFireInverted();
 	void OnBreakInFront();
@@ -50,6 +51,9 @@ private:
 	void OnAimPressed();
 	void OnAimReleased();
 	void OnPrimaryPressed();
+	void OnPrimaryReleased();
+	void OnNextWeapon();
+	void OnPreviousWeapon();
 	void OnDash();
 	void OnSprintReleased();
 	void OnCrouch();

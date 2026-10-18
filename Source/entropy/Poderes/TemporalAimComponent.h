@@ -59,6 +59,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.5"))
 	float BulletAngleDegrees = 6.f;
 
+	/** Las balas ya incrustadas (con armas hay muchas) solo ganan si apuntas casi exacto a ellas. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia", meta = (ClampMin = "0.1"))
+	float EmbeddedBulletAngleDegrees = 1.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Entropia|FX")
 	FLinearColor HighlightColor = FLinearColor(1.f, 0.65f, 0.15f, 0.35f);
 

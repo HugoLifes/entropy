@@ -178,6 +178,18 @@ void UTemporalFXSubsystem::SetField(const UObject* Owner, const FVector& Center,
 	}
 }
 
+UMaterialInstanceDynamic* UTemporalFXSubsystem::GetSharedSolid(const FLinearColor& Color)
+{
+	const uint32 Key = Color.ToFColor(false).ToPackedARGB();
+	if (const TObjectPtr<UMaterialInstanceDynamic>* Found = SharedSolids.Find(Key); Found && *Found)
+	{
+		return *Found;
+	}
+	UMaterialInstanceDynamic* Solid = TemporalFX::MakeSolid(this, Color);
+	SharedSolids.Add(Key, Solid);
+	return Solid;
+}
+
 void UTemporalFXSubsystem::ClearField(const UObject* Owner)
 {
 	if (Owner)

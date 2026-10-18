@@ -112,7 +112,9 @@ AActor* UTemporalAimComponent::FindTarget() const
 			}
 			const float CenterAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ToBullet / Distance, Forward), -1.f, 1.f)));
 			const float EdgeAngle = CenterAngle - FMath::RadiansToDegrees(FMath::Atan(Extent.Size() / Distance));
-			if (EdgeAngle >= BulletAngleDegrees || (BestBullet && !IsBetterAim(EdgeAngle, CenterAngle, BestEdge, BestCenter)))
+			// Fase 4: las incrustadas son muchas (tus balas en la pared): solo ganan si apuntas casi exacto a ellas.
+			const float MaxAngle = It->IsEmbedded() ? EmbeddedBulletAngleDegrees : BulletAngleDegrees;
+			if (EdgeAngle >= MaxAngle || (BestBullet && !IsBetterAim(EdgeAngle, CenterAngle, BestEdge, BestCenter)))
 			{
 				continue;
 			}

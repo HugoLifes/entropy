@@ -4,6 +4,7 @@
 #include "EntropiaPlayerPowers.h"
 #include "TemporalParkourRoom.h"
 #include "TemporalCombatRoom.h"
+#include "TemporalShootingRoom.h"
 #include "TemporalFXSubsystem.h"
 #include "TemporalRecorderComponent.h"
 #include "TemporalSubsystem.h"
@@ -105,6 +106,10 @@ void UEntropiaRoomsComponent::BuildAll(UEntropiaPlayerPowers* InPowers)
 	{
 		CombatRoom = GetWorld()->SpawnActor<ATemporalCombatRoom>(ATemporalCombatRoom::StaticClass(), PlaceAt(CombatRoomOffset), Params);
 	}
+	if (bSpawnShootingRoom)
+	{
+		ShootingRoom = GetWorld()->SpawnActor<ATemporalShootingRoom>(ATemporalShootingRoom::StaticClass(), PlaceAt(ShootingRoomOffset), Params);
+	}
 }
 
 TArray<AActor*> UEntropiaRoomsComponent::GatherRewindables() const
@@ -183,6 +188,14 @@ void UEntropiaRoomsComponent::GoToRoom(int32 Key)
 			Powers->EndForTeleport();
 			Powers->ClearEchoes();
 			CombatRoom->TeleportPlayerHere();
+		}
+		return;
+	case 8:
+		if (ShootingRoom)
+		{
+			Powers->EndForTeleport();
+			Powers->ClearEchoes();
+			ShootingRoom->TeleportPlayerHere();
 		}
 		return;
 	default:
