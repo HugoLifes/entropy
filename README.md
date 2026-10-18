@@ -84,4 +84,4 @@ powershell -ExecutionPolicy Bypass -File Tools\run-tour.ps1 -ExtraArgs '-Entropi
 
 ## Hoja de ruta
 
-✅ 1 Pulir el tiempo · ✅ 2 Destrucción y partículas · ✅ 3 Moverse, reflejos y remates · ✅ 3b Parkour, cobertura, pelea y detener el mundo · 🧪 4 Disparos con el tiempo (en prueba) · ⏳ 4b Golpes básicos y remates realistas · ⏳ 5 Enemigos e IA · ⏳ 6 Lo difícil (cobertura, IA avanzada) · ⏳ 7 Pulido · después: ramas de habilidades (con inspiración de JoJo: DIO, Jotaro, Pucci), movimiento más real e interacción con el entorno.
+✅ 1 Pulir el tiempo · ✅ 2 Destrucción y partículas · ✅ 3 Moverse, reflejos y remates · ✅ 3b Parkour, cobertura, pelea y detener el mundo · ✅ 4 Disparos con el tiempo · ⏳ 4b Golpes básicos y remates realistas · ⏳ 5 Enemigos e IA · ⏳ 6 Lo difícil (cobertura, IA avanzada) · ⏳ 7 Pulido · después: ramas de habilidades (con inspiración de JoJo: DIO, Jotaro, Pucci), movimiento más real e interacción con el entorno.
